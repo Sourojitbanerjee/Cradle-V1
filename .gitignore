@@ -1,5 +1,36 @@
-# Object file
-*.o
+# Binaries and build outputs
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 
-# Ada Library Information
-*.ali
+# Test and coverage artifacts
+*.out
+*.test
+coverage.txt
+coverage.html
+
+# Environment and secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Operating System files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
