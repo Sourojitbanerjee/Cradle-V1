@@ -13,6 +13,9 @@ import (
 
 	"github.com/cradle-dev/cradle/apps/api/internal/handlers"
 	appMiddleware "github.com/cradle-dev/cradle/apps/api/internal/middleware"
+	cradleAWS "github.com/cradle-dev/cradle/pkg/aws"
+	"github.com/cradle-dev/cradle/pkg/discovery"
+	"github.com/cradle-dev/cradle/pkg/provider"
 	"github.com/cradle-dev/cradle/pkg/storage/postgres"
 	"github.com/cradle-dev/cradle/pkg/telemetry"
 	"github.com/go-chi/chi/v5"
@@ -57,6 +60,15 @@ func main() {
 		logger.Info("Database migrations verified and up-to-date")
 	} else {
 		logger.Warn("DATABASE_URL not set; running in memory/mock mode without database connection")
+	}
+
+	// Initialize AWS cloud provider adapter
+	awsFactory, err := cradleAWS.NewClientFactory(context.Background())
+	if err != nil {
+		logger.Warn("Could not load default AWS credentials; provider will use runtime assumed sessions", slog.String("error", err.Error()))
+	} else {
+		provider.DefaultRegistry.Register(cradleAWS.NewAWSProvider(awsFactory))
+		logger.Info("Successfully registered AWS cloud provider adapter")
 	}
 
 	r := setupRouter(pool, logger, cradleAWSAccount)
@@ -124,19 +136,42 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 	accountHandler := handlers.NewAccountHandler(pool, cradleAWSAccount)
 	resourceHandler := handlers.NewResourceHandler(pool)
 
+	orchestrator := discovery.NewOrchestrator(pool, provider.DefaultRegistry)
+	discoveryHandler := handlers.NewDiscoveryHandler(pool, orchestrator, provider.DefaultRegistry)
+	jobsHandler := handlers.NewJobsHandler(pool)
+	costHandler := handlers.NewCostHandler(pool)
+
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Use(appMiddleware.TenantMiddleware)
 
-		// Cloud Accounts Management
+		// Cloud Accounts Management & Verification
 		api.Route("/accounts", func(acc chi.Router) {
 			acc.Get("/external-id", accountHandler.GenerateExternalID)
 			acc.Post("/", accountHandler.RegisterAccount)
+			acc.Post("/{id}/verify", discoveryHandler.VerifyConnection)
+			acc.Post("/{id}/sync", discoveryHandler.TriggerSync)
+			acc.Get("/{id}/status", jobsHandler.GetAccountStatus)
 		})
 
 		// Canonical Resources & Dependency Graph
 		api.Route("/resources", func(res chi.Router) {
 			res.Get("/", resourceHandler.ListResources)
 			res.Get("/{id}/graph", resourceHandler.GetResourceGraph)
+		})
+
+		// Discovery Job History
+		api.Get("/discovery/jobs", jobsHandler.ListDiscoveryJobs)
+
+		// Cost Intelligence
+		api.Route("/cost", func(c chi.Router) {
+			c.Get("/summary", costHandler.GetCostSummary)
+		})
+
+		// Waste Detection & Savings Findings
+		api.Route("/waste", func(w chi.Router) {
+			w.Get("/summary", costHandler.GetWasteSummary)
+			w.Get("/findings", costHandler.ListWasteFindings)
+			w.Post("/analyze", costHandler.AnalyzeWaste)
 		})
 	})
 

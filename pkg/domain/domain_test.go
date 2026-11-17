@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -127,7 +128,8 @@ func TestResourceEntityConfigurationHash(t *testing.T) {
 		NativeID:       "i-0123456789abcdef0",
 		ARN:            "arn:aws:ec2:us-east-1:123456789012:instance/i-0123456789abcdef0",
 		Status:         ResourceStatusRunning,
-		Configuration: map[string]interface{}{
+		ObservedAt:     time.Now().UTC(),
+		ObservedState: map[string]interface{}{
 			"instance_type": "m5.large",
 			"architecture":  "x86_64",
 		},

@@ -12,6 +12,23 @@ import (
 	"github.com/google/uuid"
 )
 
+// ProvenanceCategory defines the epistemological origin of an infrastructure data point.
+// Principle: Never allow an inference to masquerade as an AWS fact.
+type ProvenanceCategory string
+
+const (
+	// ProvenanceObserved represents direct, verifiable facts received from the cloud provider API.
+	ProvenanceObserved ProvenanceCategory = "OBSERVED_FROM_PROVIDER"
+
+	// ProvenanceDerived represents deterministic facts calculated by Cradle logic
+	// (e.g., canonical resource hashing, standard state normalization).
+	ProvenanceDerived ProvenanceCategory = "DERIVED_BY_CRADLE"
+
+	// ProvenanceInferred represents heuristic or statistical interpretations
+	// (e.g., idle probabilities, ownership heuristics).
+	ProvenanceInferred ProvenanceCategory = "INFERRED_BY_CRADLE"
+)
+
 // ResourceStatus represents the operational lifecycle state of a cloud resource.
 type ResourceStatus string
 
@@ -25,20 +42,29 @@ const (
 	ResourceStatusUnknown    ResourceStatus = "unknown"
 )
 
-// ResourceEntity represents a canonical, provider-agnostic infrastructure resource.
+// ResourceEntity represents a canonical, provider-agnostic infrastructure resource
+// with explicit provenance boundaries separating observed facts from derived or inferred data.
 type ResourceEntity struct {
-	ID                  uuid.UUID              `json:"id"`
-	TenantID            uuid.UUID              `json:"tenant_id"`
-	CloudAccountID      uuid.UUID              `json:"cloud_account_id"`
-	Provider            ProviderType           `json:"provider"`
-	AccountID           string                 `json:"account_id"`
-	Region              string                 `json:"region"`
-	ResourceType        string                 `json:"resource_type"` // e.g. "aws:ec2:instance", "aws:s3:bucket"
-	NativeID            string                 `json:"native_id"`     // e.g. "i-0123456789abcdef0"
-	ARN                 string                 `json:"arn"`           // Full cloud ARN/URI
-	Name                string                 `json:"name"`
-	Status              ResourceStatus         `json:"status"`
-	Configuration       map[string]interface{} `json:"configuration"`
+	ID                uuid.UUID         `json:"id"`
+	TenantID          uuid.UUID         `json:"tenant_id"`
+	CloudAccountID    uuid.UUID         `json:"cloud_account_id"`
+	Provider          ProviderType      `json:"provider"`
+	AccountID         string            `json:"account_id"`
+	Region            string            `json:"region"`
+	ResourceType      string            `json:"resource_type"` // e.g. "aws:ec2:instance", "aws:s3:bucket"
+	NativeID          string            `json:"native_id"`     // e.g. "i-0123456789abcdef0"
+	ARN               string            `json:"arn"`           // Full cloud ARN/URI
+	Name              string            `json:"name"`
+	Status            ResourceStatus    `json:"status"`
+	Tags              map[string]string `json:"tags"`
+	CreatedAtProvider *time.Time        `json:"created_at_provider,omitempty"`
+	ObservedAt        time.Time         `json:"observed_at"`
+
+	// Strict Epistemological Segregation
+	ObservedState map[string]interface{} `json:"observed_state"`           // OBSERVED FROM AWS
+	DerivedState  map[string]interface{} `json:"derived_state"`            // DERIVED BY CRADLE
+	InferredState map[string]interface{} `json:"inferred_state,omitempty"` // INFERRED BY CRADLE
+
 	RawPayload          map[string]interface{} `json:"raw_payload,omitempty"`
 	ConfigurationHash   string                 `json:"configuration_hash"`
 	MonthlyCostEstimate float64                `json:"monthly_cost_estimate"`
@@ -70,18 +96,20 @@ func (r *ResourceEntity) Validate() error {
 	if r.ARN == "" {
 		return errors.New("ARN is required")
 	}
+	if r.ObservedAt.IsZero() {
+		return errors.New("observed_at timestamp is required")
+	}
 	return nil
 }
 
-// ComputeConfigurationHash computes a deterministic SHA-256 hash of the normalized configuration.
-// This enables O(1) drift detection by comparing current configuration hash with previous snapshot.
+// ComputeConfigurationHash computes a deterministic SHA-256 hash of the canonical observed state.
 func (r *ResourceEntity) ComputeConfigurationHash() error {
-	if r.Configuration == nil {
-		r.Configuration = make(map[string]interface{})
+	if r.ObservedState == nil {
+		r.ObservedState = make(map[string]interface{})
 	}
-	data, err := json.Marshal(r.Configuration)
+	data, err := json.Marshal(r.ObservedState)
 	if err != nil {
-		return fmt.Errorf("failed to marshal configuration for hashing: %w", err)
+		return fmt.Errorf("failed to marshal observed state for hashing: %w", err)
 	}
 	hash := sha256.Sum256(data)
 	r.ConfigurationHash = hex.EncodeToString(hash[:])

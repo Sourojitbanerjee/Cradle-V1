@@ -5,51 +5,69 @@ import (
 	"net/http"
 
 	"github.com/cradle-dev/cradle/pkg/domain"
+	"github.com/cradle-dev/cradle/pkg/graph"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type ResourceListResponse struct {
-	Total     int                     `json:"total"`
-	Resources []domain.ResourceEntity `json:"resources"`
-}
-
-type ResourceGraphResponse struct {
-	RootResource   domain.ResourceEntity         `json:"root_resource"`
-	Relationships  []domain.ResourceRelationship `json:"relationships"`
-	ConnectedNodes []domain.ResourceEntity       `json:"connected_nodes"`
-}
-
 type ResourceHandler struct {
-	pool *pgxpool.Pool
+	pool        *pgxpool.Pool
+	queryEngine *graph.QueryEngine
 }
 
 func NewResourceHandler(pool *pgxpool.Pool) *ResourceHandler {
-	return &ResourceHandler{pool: pool}
+	return &ResourceHandler{
+		pool:        pool,
+		queryEngine: graph.NewQueryEngine(pool),
+	}
 }
 
-// ListResources returns the paginated inventory of discovered resources for the tenant.
+// ListResources returns the paginated, filtered inventory of discovered resources.
 func (h *ResourceHandler) ListResources(w http.ResponseWriter, r *http.Request) {
-	_, err := domain.TenantFromContext(r.Context())
+	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
 		return
 	}
 
-	// In Phase 0, return initial structured response
-	resp := ResourceListResponse{
-		Total:     0,
-		Resources: []domain.ResourceEntity{},
+	q := r.URL.Query()
+	limit := 50
+	offset := 0
+	if v := q.Get("limit"); v != "" {
+		if n := parseInt(v, 50); n > 0 {
+			limit = n
+		}
+	}
+	if v := q.Get("offset"); v != "" {
+		if n := parseInt(v, 0); n >= 0 {
+			offset = n
+		}
+	}
+
+	filter := graph.ResourceFilter{
+		TenantID:     tc.TenantID,
+		Region:       q.Get("region"),
+		ResourceType: q.Get("type"),
+		Status:       q.Get("status"),
+		NameContains: q.Get("search"),
+		Limit:        limit,
+		Offset:       offset,
+	}
+
+	result, err := h.queryEngine.ListResources(r.Context(), filter)
+	if err != nil {
+		http.Error(w, `{"error": "failed to query resources"}`, http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(result)
 }
 
-// GetResourceGraph returns the dependency graph around a specific resource.
+// GetResourceGraph returns the blast radius / dependency subgraph around a resource.
 func (h *ResourceHandler) GetResourceGraph(w http.ResponseWriter, r *http.Request) {
-	_, err := domain.TenantFromContext(r.Context())
+	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
 		return
@@ -62,17 +80,38 @@ func (h *ResourceHandler) GetResourceGraph(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resp := ResourceGraphResponse{
-		RootResource: domain.ResourceEntity{
-			ID:           resourceID,
-			ResourceType: "aws:ec2:instance",
-			Name:         "placeholder",
-			Status:       domain.ResourceStatusRunning,
-		},
-		Relationships:  []domain.ResourceRelationship{},
-		ConnectedNodes: []domain.ResourceEntity{},
+	depth := parseInt(r.URL.Query().Get("depth"), 3)
+
+	entities, rels, err := h.queryEngine.GetBlastRadius(r.Context(), tc.TenantID, resourceID, depth)
+	if err != nil {
+		http.Error(w, `{"error": "graph query failed"}`, http.StatusInternalServerError)
+		return
+	}
+
+	resp := map[string]interface{}{
+		"root_resource_id": resourceID,
+		"depth":            depth,
+		"nodes":            entities,
+		"edges":            rels,
+		"node_count":       len(entities),
+		"edge_count":       len(rels),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func parseInt(s string, defaultVal int) int {
+	if s == "" {
+		return defaultVal
+	}
+	val := 0
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			val = val*10 + int(c-'0')
+		} else {
+			return defaultVal
+		}
+	}
+	return val
 }
