@@ -127,8 +127,9 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 	r.Use(appMiddleware.RequestLogger(logger))
 	r.Use(middleware.Recoverer)
 
-	// Health Endpoints
+	// Root & Health Endpoints
 	healthHandler := handlers.NewHealthHandler(pool, AppVersion)
+	r.Get("/", healthHandler.Root)
 	r.Get("/healthz", healthHandler.Liveness)
 	r.Get("/readyz", healthHandler.Readiness)
 

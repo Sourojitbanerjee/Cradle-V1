@@ -117,7 +117,29 @@ func (m *testAWSProvider) DiscoverResources(ctx context.Context, req provider.Di
 func TestHealthEndpoints(t *testing.T) {
 	router := newTestRouter(nil)
 
-	// 1. Test /healthz
+	// 1. Test / (HTML Browser Accept)
+	reqHTML := httptest.NewRequest(http.MethodGet, "/", nil)
+	reqHTML.Header.Set("Accept", "text/html,application/xhtml+xml")
+	rrHTML := httptest.NewRecorder()
+	router.ServeHTTP(rrHTML, reqHTML)
+
+	if rrHTML.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for root HTML, got %d", rrHTML.Code)
+	}
+	if !strings.Contains(rrHTML.Body.String(), "Cradle Control Plane") {
+		t.Errorf("expected HTML landing page title, got %s", rrHTML.Body.String())
+	}
+
+	// 2. Test / (JSON Accept)
+	reqJSON := httptest.NewRequest(http.MethodGet, "/", nil)
+	rrJSON := httptest.NewRecorder()
+	router.ServeHTTP(rrJSON, reqJSON)
+
+	if rrJSON.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for root JSON, got %d", rrJSON.Code)
+	}
+
+	// 3. Test /healthz
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
@@ -134,7 +156,7 @@ func TestHealthEndpoints(t *testing.T) {
 		t.Errorf("expected status 'ok', got '%v'", healthResp["status"])
 	}
 
-	// 2. Test /readyz (no db configured in test, should return 200)
+	// 4. Test /readyz (no db configured in test, should return 200)
 	reqReady := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rrReady := httptest.NewRecorder()
 	router.ServeHTTP(rrReady, reqReady)
