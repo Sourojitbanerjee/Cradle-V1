@@ -65,10 +65,10 @@ func (e *QueryEngine) ListResources(ctx context.Context, filter ResourceFilter) 
 	}
 
 	err := postgres.WithTenantTx(ctx, e.pool, filter.TenantID, func(ctx context.Context, tx pgx.Tx) error {
-		// Count total matching records
-		countQuery := `SELECT COUNT(*) FROM resource_entities WHERE deleted_at IS NULL`
-		args := []interface{}{}
-		argIdx := 1
+		// Count total matching records with tenant isolation
+		countQuery := `SELECT COUNT(*) FROM resource_entities WHERE tenant_id = $1 AND deleted_at IS NULL`
+		args := []interface{}{filter.TenantID}
+		argIdx := 2
 
 		if filter.Region != "" {
 			countQuery += fmt.Sprintf(" AND region = $%d", argIdx)
@@ -102,26 +102,10 @@ func (e *QueryEngine) ListResources(ctx context.Context, filter ResourceFilter) 
 				   tags, observed_at, configuration_hash, monthly_cost_estimate,
 				   created_at, updated_at
 			FROM resource_entities
-			WHERE deleted_at IS NULL`
+			WHERE tenant_id = $1 AND deleted_at IS NULL`
 
-		selectArgs := make([]interface{}, len(args))
-		copy(selectArgs, args)
-		selectArgIdx := argIdx
-
-		if filter.Region != "" {
-			// Already added in count
-		}
-		// Rebuild WHERE for select (reuse same args)
-		selectQuery = `
-			SELECT id, cloud_account_id, provider, account_id, region,
-				   resource_type, native_id, arn, name, status,
-				   tags, observed_at, configuration_hash, monthly_cost_estimate,
-				   created_at, updated_at
-			FROM resource_entities
-			WHERE deleted_at IS NULL`
-
-		selectArgs = []interface{}{}
-		selectArgIdx = 1
+		selectArgs := []interface{}{filter.TenantID}
+		selectArgIdx := 2
 		if filter.Region != "" {
 			selectQuery += fmt.Sprintf(" AND region = $%d", selectArgIdx)
 			selectArgs = append(selectArgs, filter.Region)
@@ -189,26 +173,26 @@ func (e *QueryEngine) GetBlastRadius(ctx context.Context, tenantID uuid.UUID, ro
 	var rels []domain.ResourceRelationship
 
 	err := postgres.WithTenantTx(ctx, e.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
-		// Recursive CTE: traverse the graph outward from root
+		// Recursive CTE: traverse the graph outward from root with tenant isolation
 		query := `
 			WITH RECURSIVE reachable AS (
 				SELECT source_resource_id, target_resource_id, relationship_type, 1 AS depth
 				FROM resource_relationships
-				WHERE source_resource_id = $1
+				WHERE tenant_id = $1 AND source_resource_id = $2
 				
 				UNION ALL
 				
 				SELECT rr.source_resource_id, rr.target_resource_id, rr.relationship_type, r.depth + 1
 				FROM resource_relationships rr
 				INNER JOIN reachable r ON rr.source_resource_id = r.target_resource_id
-				WHERE r.depth < $2
+				WHERE rr.tenant_id = $1 AND r.depth < $3
 			)
 			SELECT DISTINCT target_resource_id, relationship_type, depth
 			FROM reachable
 			ORDER BY depth;
 		`
 
-		rows, err := tx.Query(ctx, query, rootResourceID, maxDepth)
+		rows, err := tx.Query(ctx, query, tenantID, rootResourceID, maxDepth)
 		if err != nil {
 			return fmt.Errorf("blast radius CTE failed: %w", err)
 		}
@@ -237,9 +221,9 @@ func (e *QueryEngine) GetBlastRadius(ctx context.Context, tenantID uuid.UUID, ro
 			entityQuery := `
 				SELECT id, provider, account_id, region, resource_type, native_id, arn, name, status, observed_at
 				FROM resource_entities
-				WHERE id = ANY($1) AND deleted_at IS NULL
+				WHERE tenant_id = $1 AND id = ANY($2) AND deleted_at IS NULL
 			`
-			entRows, err := tx.Query(ctx, entityQuery, reachableIDs)
+			entRows, err := tx.Query(ctx, entityQuery, tenantID, reachableIDs)
 			if err != nil {
 				return err
 			}

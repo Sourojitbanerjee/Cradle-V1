@@ -133,6 +133,7 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 	r.Get("/readyz", healthHandler.Readiness)
 
 	// API v1 Routes
+	tenantHandler := handlers.NewTenantHandler(pool)
 	accountHandler := handlers.NewAccountHandler(pool, cradleAWSAccount)
 	resourceHandler := handlers.NewResourceHandler(pool)
 
@@ -142,36 +143,48 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 	costHandler := handlers.NewCostHandler(pool)
 
 	r.Route("/api/v1", func(api chi.Router) {
-		api.Use(appMiddleware.TenantMiddleware)
-
-		// Cloud Accounts Management & Verification
-		api.Route("/accounts", func(acc chi.Router) {
-			acc.Get("/external-id", accountHandler.GenerateExternalID)
-			acc.Post("/", accountHandler.RegisterAccount)
-			acc.Post("/{id}/verify", discoveryHandler.VerifyConnection)
-			acc.Post("/{id}/sync", discoveryHandler.TriggerSync)
-			acc.Get("/{id}/status", jobsHandler.GetAccountStatus)
+		// Tenant Onboarding & Management (Public)
+		api.Route("/tenants", func(t chi.Router) {
+			t.Post("/", tenantHandler.CreateTenant)
+			t.Get("/", tenantHandler.ListTenants)
+			t.Get("/{id}", tenantHandler.GetTenant)
 		})
 
-		// Canonical Resources & Dependency Graph
-		api.Route("/resources", func(res chi.Router) {
-			res.Get("/", resourceHandler.ListResources)
-			res.Get("/{id}/graph", resourceHandler.GetResourceGraph)
-		})
+		// Authenticated Tenant Endpoints (Requires X-Tenant-ID)
+		api.Group(func(authed chi.Router) {
+			authed.Use(appMiddleware.TenantMiddleware(pool))
 
-		// Discovery Job History
-		api.Get("/discovery/jobs", jobsHandler.ListDiscoveryJobs)
+			// Cloud Accounts Management & Verification
+			authed.Route("/accounts", func(acc chi.Router) {
+				acc.Get("/external-id", accountHandler.GenerateExternalID)
+				acc.Post("/", accountHandler.RegisterAccount)
+				acc.Get("/", accountHandler.ListAccounts)
+				acc.Get("/{id}", accountHandler.GetAccount)
+				acc.Post("/{id}/verify", discoveryHandler.VerifyConnection)
+				acc.Post("/{id}/sync", discoveryHandler.TriggerSync)
+				acc.Get("/{id}/status", jobsHandler.GetAccountStatus)
+			})
 
-		// Cost Intelligence
-		api.Route("/cost", func(c chi.Router) {
-			c.Get("/summary", costHandler.GetCostSummary)
-		})
+			// Canonical Resources & Dependency Graph
+			authed.Route("/resources", func(res chi.Router) {
+				res.Get("/", resourceHandler.ListResources)
+				res.Get("/{id}/graph", resourceHandler.GetResourceGraph)
+			})
 
-		// Waste Detection & Savings Findings
-		api.Route("/waste", func(w chi.Router) {
-			w.Get("/summary", costHandler.GetWasteSummary)
-			w.Get("/findings", costHandler.ListWasteFindings)
-			w.Post("/analyze", costHandler.AnalyzeWaste)
+			// Discovery Job History
+			authed.Get("/discovery/jobs", jobsHandler.ListDiscoveryJobs)
+
+			// Cost Intelligence
+			authed.Route("/cost", func(c chi.Router) {
+				c.Get("/summary", costHandler.GetCostSummary)
+			})
+
+			// Waste Detection & Savings Findings
+			authed.Route("/waste", func(w chi.Router) {
+				w.Get("/summary", costHandler.GetWasteSummary)
+				w.Get("/findings", costHandler.ListWasteFindings)
+				w.Post("/analyze", costHandler.AnalyzeWaste)
+			})
 		})
 	})
 

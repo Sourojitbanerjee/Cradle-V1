@@ -45,10 +45,7 @@ func (h *JobsHandler) ListDiscoveryJobs(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if h.pool == nil {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"jobs": []DiscoveryJob{},
-		})
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
 		return
 	}
 
@@ -112,15 +109,7 @@ func (h *JobsHandler) GetAccountStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.pool == nil {
-		// Mock response for development without DB
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"account_id":         accID,
-			"status":             "pending",
-			"last_discovered":    nil,
-			"total_resources":    0,
-			"resource_breakdown": map[string]int{},
-		})
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
 		return
 	}
 

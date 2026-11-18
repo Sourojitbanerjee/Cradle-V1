@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cradle-dev/cradle/pkg/domain"
+	"github.com/cradle-dev/cradle/pkg/graph"
 	"github.com/cradle-dev/cradle/pkg/provider"
 	"github.com/cradle-dev/cradle/pkg/storage/postgres"
 	"github.com/google/uuid"
@@ -18,6 +19,7 @@ import (
 type Orchestrator struct {
 	pool     *pgxpool.Pool
 	registry *provider.Registry
+	resolver *graph.Resolver
 }
 
 // NewOrchestrator creates a new discovery orchestrator.
@@ -28,6 +30,7 @@ func NewOrchestrator(pool *pgxpool.Pool, registry *provider.Registry) *Orchestra
 	return &Orchestrator{
 		pool:     pool,
 		registry: registry,
+		resolver: graph.NewResolver(),
 	}
 }
 
@@ -144,7 +147,14 @@ func (o *Orchestrator) persistDiscoveryResult(ctx context.Context, account *doma
 			}
 		}
 
-		// 2. Update cloud_accounts status & last_discovered_at
+		// 2. Resolve cross-resource dependency edges and persist into resource_relationships
+		if len(result.Relationships) > 0 && o.resolver != nil {
+			if _, err := o.resolver.ResolveAndPersist(ctx, tx, account.TenantID, account.ID, result.Relationships); err != nil {
+				return fmt.Errorf("failed resolving and persisting relationships: %w", err)
+			}
+		}
+
+		// 3. Update cloud_accounts status & last_discovered_at
 		status := "connected"
 		jobStatus := "completed"
 		if len(result.Errors) > 0 {

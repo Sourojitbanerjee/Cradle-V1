@@ -11,8 +11,8 @@ func TestEmbeddedMigrations(t *testing.T) {
 		t.Fatalf("unexpected error loading up migrations: %v", err)
 	}
 
-	if len(upFiles) < 3 {
-		t.Fatalf("expected at least 3 up migration files embedded, got %d", len(upFiles))
+	if len(upFiles) < 4 {
+		t.Fatalf("expected at least 4 up migration files embedded, got %d", len(upFiles))
 	}
 
 	firstUp := upFiles[0]

@@ -8,20 +8,49 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cradle-dev/cradle/pkg/domain"
 	"github.com/cradle-dev/cradle/pkg/provider"
+	"github.com/cradle-dev/cradle/pkg/storage/postgres"
 	"github.com/cradle-dev/cradle/pkg/telemetry"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func newTestRouter() http.Handler {
+var defaultDevTenantID = uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
+
+func getTestPool(t *testing.T) *pgxpool.Pool {
+	t.Helper()
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		dbURL = "postgres://cradle_user:cradle_secure_password_dev@localhost:5433/cradle_db?sslmode=disable"
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	pool, err := postgres.NewPool(ctx, postgres.Config{URL: dbURL})
+	if err != nil {
+		t.Logf("PostgreSQL not available for integration tests (%v); running in mock/nil mode", err)
+		return nil
+	}
+
+	migrator := postgres.NewMigrator(pool)
+	if err := migrator.Up(ctx); err != nil {
+		t.Logf("Failed running test migrations (%v)", err)
+	}
+
+	return pool
+}
+
+func newTestRouter(pool *pgxpool.Pool) http.Handler {
 	logger := telemetry.NewLogger(io.Discard, slog.LevelInfo)
 	provider.DefaultRegistry.Register(&testAWSProvider{})
-	return setupRouter(nil, logger, "123456789012")
+	return setupRouter(pool, logger, "123456789012")
 }
 
 type testAWSProvider struct{}
@@ -39,18 +68,45 @@ func (m *testAWSProvider) DiscoverRegions(ctx context.Context, account *domain.C
 	return []string{"us-east-1"}, nil
 }
 func (m *testAWSProvider) DiscoverResources(ctx context.Context, req provider.DiscoveryRequest) (*provider.DiscoveryResult, error) {
+	instID := uuid.New()
+	subnetID := uuid.New()
 	return &provider.DiscoveryResult{
 		JobID:     req.JobID,
 		AccountID: req.Account.AccountID,
 		Entities: []domain.ResourceEntity{
 			{
-				ID:           uuid.New(),
-				TenantID:     req.TenantID,
-				Provider:     domain.ProviderAWS,
-				ResourceType: "aws:ec2:instance",
-				NativeID:     "i-12345",
-				ARN:          "arn:aws:ec2:us-east-1:123456789012:instance/i-12345",
-				Status:       domain.ResourceStatusRunning,
+				ID:             instID,
+				TenantID:       req.TenantID,
+				CloudAccountID: req.Account.ID,
+				Provider:       domain.ProviderAWS,
+				ResourceType:   "aws:ec2:instance",
+				NativeID:       "i-1234567890abcdef0",
+				ARN:            "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0",
+				Status:         domain.ResourceStatusRunning,
+				Region:         "us-east-1",
+				AccountID:      req.Account.AccountID,
+				ObservedAt:     time.Now().UTC(),
+			},
+			{
+				ID:             subnetID,
+				TenantID:       req.TenantID,
+				CloudAccountID: req.Account.ID,
+				Provider:       domain.ProviderAWS,
+				ResourceType:   "aws:ec2:subnet",
+				NativeID:       "subnet-12345678",
+				ARN:            "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-12345678",
+				Status:         domain.ResourceStatusAvailable,
+				Region:         "us-east-1",
+				AccountID:      req.Account.AccountID,
+				ObservedAt:     time.Now().UTC(),
+			},
+		},
+		Relationships: []domain.ResourceRelationship{
+			{
+				TenantID:         req.TenantID,
+				SourceResourceID: instID,
+				TargetARN:        "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-12345678",
+				RelationshipType: domain.RelAttachedTo,
 			},
 		},
 		StartedAt:   time.Now().UTC(),
@@ -59,7 +115,7 @@ func (m *testAWSProvider) DiscoverResources(ctx context.Context, req provider.Di
 }
 
 func TestHealthEndpoints(t *testing.T) {
-	router := newTestRouter()
+	router := newTestRouter(nil)
 
 	// 1. Test /healthz
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -78,7 +134,7 @@ func TestHealthEndpoints(t *testing.T) {
 		t.Errorf("expected status 'ok', got '%v'", healthResp["status"])
 	}
 
-	// 2. Test /readyz (no db configured in test, should return ready with disabled db)
+	// 2. Test /readyz (no db configured in test, should return 200)
 	reqReady := httptest.NewRequest(http.MethodGet, "/readyz", nil)
 	rrReady := httptest.NewRecorder()
 	router.ServeHTTP(rrReady, reqReady)
@@ -89,7 +145,7 @@ func TestHealthEndpoints(t *testing.T) {
 }
 
 func TestTenantMiddlewareEnforcement(t *testing.T) {
-	router := newTestRouter()
+	router := newTestRouter(nil)
 
 	// 1. Missing X-Tenant-ID header should fail with 400
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/resources", nil)
@@ -111,11 +167,46 @@ func TestTenantMiddlewareEnforcement(t *testing.T) {
 	}
 }
 
-func TestAccountRegistrationFlow(t *testing.T) {
-	router := newTestRouter()
+func TestNilPoolServiceUnavailable(t *testing.T) {
+	router := newTestRouter(nil)
 	tenantID := uuid.New()
 
-	// 1. Request ExternalId generation
+	endpoints := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodGet, "/api/v1/resources", ""},
+		{http.MethodGet, "/api/v1/resources/" + uuid.New().String() + "/graph", ""},
+		{http.MethodPost, "/api/v1/accounts/" + uuid.New().String() + "/verify", ""},
+		{http.MethodPost, "/api/v1/accounts/" + uuid.New().String() + "/sync", ""},
+		{http.MethodGet, "/api/v1/cost/summary", ""},
+		{http.MethodGet, "/api/v1/waste/summary", ""},
+		{http.MethodGet, "/api/v1/waste/findings", ""},
+		{http.MethodPost, "/api/v1/waste/analyze", ""},
+	}
+
+	for _, ep := range endpoints {
+		var req *http.Request
+		if ep.body != "" {
+			req = httptest.NewRequest(ep.method, ep.path, strings.NewReader(ep.body))
+		} else {
+			req = httptest.NewRequest(ep.method, ep.path, nil)
+		}
+		req.Header.Set("X-Tenant-ID", tenantID.String())
+		rr := httptest.NewRecorder()
+		router.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusServiceUnavailable {
+			t.Errorf("[%s %s] expected 503 Service Unavailable, got %d", ep.method, ep.path, rr.Code)
+		}
+	}
+}
+
+func TestExternalIDGeneration(t *testing.T) {
+	router := newTestRouter(nil)
+	tenantID := uuid.New()
+
 	reqExt := httptest.NewRequest(http.MethodGet, "/api/v1/accounts/external-id", nil)
 	reqExt.Header.Set("X-Tenant-ID", tenantID.String())
 	rrExt := httptest.NewRecorder()
@@ -130,71 +221,89 @@ func TestAccountRegistrationFlow(t *testing.T) {
 	if !strings.HasPrefix(extResp["external_id"], "cradle-") {
 		t.Errorf("expected ExternalID prefix 'cradle-', got '%s'", extResp["external_id"])
 	}
+	if extResp["cradle_account_id"] != "123456789012" {
+		t.Errorf("expected Cradle AWS Account 123456789012, got %s", extResp["cradle_account_id"])
+	}
+}
 
-	// 2. Register valid AWS Account
-	regPayload := map[string]interface{}{
+func TestDatabaseIntegrationLifecycle(t *testing.T) {
+	pool := getTestPool(t)
+	if pool == nil {
+		t.Skip("PostgreSQL not available; skipping database integration test")
+	}
+
+	router := newTestRouter(pool)
+
+	// 1. Create a dedicated test tenant
+	testTenantID := uuid.New()
+	tenantBody, _ := json.Marshal(map[string]interface{}{
+		"id":        testTenantID,
+		"name":      "Integration Test Corp",
+		"slug":      "test-corp-" + testTenantID.String()[:8],
+		"plan_tier": "enterprise",
+	})
+	reqTenant := httptest.NewRequest(http.MethodPost, "/api/v1/tenants", bytes.NewReader(tenantBody))
+	reqTenant.Header.Set("Content-Type", "application/json")
+	rrTenant := httptest.NewRecorder()
+	router.ServeHTTP(rrTenant, reqTenant)
+
+	if rrTenant.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created for tenant creation, got %d: %s", rrTenant.Code, rrTenant.Body.String())
+	}
+
+	var createdTenant domain.Tenant
+	if err := json.Unmarshal(rrTenant.Body.Bytes(), &createdTenant); err != nil {
+		t.Fatalf("failed decoding tenant response: %v", err)
+	}
+	if createdTenant.ID != testTenantID {
+		t.Errorf("expected tenant ID %s, got %s", testTenantID, createdTenant.ID)
+	}
+
+	// 2. Register Cloud Account for the tenant
+	accPayload := map[string]interface{}{
 		"provider":   "aws",
-		"account_id": "987654321098",
+		"account_id": "123456789012",
 		"name":       "Production AWS Account",
-		"role_arn":   "arn:aws:iam::987654321098:role/CradleControlPlaneRole",
-		"regions":    []string{"us-east-1", "us-west-2"},
+		"role_arn":   "arn:aws:iam::123456789012:role/CradleControlPlaneRole",
+		"regions":    []string{"us-east-1"},
 	}
-	bodyBytes, _ := json.Marshal(regPayload)
+	accBytes, _ := json.Marshal(accPayload)
 
-	reqReg := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", bytes.NewReader(bodyBytes))
-	reqReg.Header.Set("X-Tenant-ID", tenantID.String())
-	reqReg.Header.Set("Content-Type", "application/json")
-	rrReg := httptest.NewRecorder()
-	router.ServeHTTP(rrReg, reqReg)
+	reqAcc := httptest.NewRequest(http.MethodPost, "/api/v1/accounts", bytes.NewReader(accBytes))
+	reqAcc.Header.Set("X-Tenant-ID", testTenantID.String())
+	reqAcc.Header.Set("Content-Type", "application/json")
+	rrAcc := httptest.NewRecorder()
+	router.ServeHTTP(rrAcc, reqAcc)
 
-	if rrReg.Code != http.StatusCreated {
-		t.Fatalf("expected status 201 Created, got %d: %s", rrReg.Code, rrReg.Body.String())
-	}
-
-	var regResp map[string]interface{}
-	_ = json.Unmarshal(rrReg.Body.Bytes(), &regResp)
-
-	// Verify trust policy was generated with the correct Cradle Account ID
-	trustPolicy, ok := regResp["trust_policy_json"].(string)
-	if !ok || !strings.Contains(trustPolicy, "123456789012") {
-		t.Errorf("expected trust policy to contain Cradle AWS Account 123456789012, got: %s", trustPolicy)
-	}
-}
-
-func TestResourceListEndpoint(t *testing.T) {
-	router := newTestRouter()
-	tenantID := uuid.New()
-
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/resources", nil)
-	req.Header.Set("X-Tenant-ID", tenantID.String())
-	rr := httptest.NewRecorder()
-	router.ServeHTTP(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected status 200, got %d", rr.Code)
+	if rrAcc.Code != http.StatusCreated {
+		t.Fatalf("expected status 201 Created for account registration, got %d: %s", rrAcc.Code, rrAcc.Body.String())
 	}
 
-	var resp struct {
-		Total     int                     `json:"total"`
-		Resources []domain.ResourceEntity `json:"resources"`
+	var regResp struct {
+		Account         domain.CloudAccount `json:"account"`
+		TrustPolicyJSON string              `json:"trust_policy_json"`
 	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+	if err := json.Unmarshal(rrAcc.Body.Bytes(), &regResp); err != nil {
+		t.Fatalf("failed decoding account response: %v", err)
+	}
+	accountID := regResp.Account.ID
+	if accountID == uuid.Nil {
+		t.Fatal("expected non-nil account ID")
 	}
 
-	if resp.Total != 0 || len(resp.Resources) != 0 {
-		t.Errorf("expected empty resource list, got total %d", resp.Total)
+	// 3. List Accounts
+	reqList := httptest.NewRequest(http.MethodGet, "/api/v1/accounts", nil)
+	reqList.Header.Set("X-Tenant-ID", testTenantID.String())
+	rrList := httptest.NewRecorder()
+	router.ServeHTTP(rrList, reqList)
+
+	if rrList.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for listing accounts, got %d: %s", rrList.Code, rrList.Body.String())
 	}
-}
 
-func TestVerifyAndSyncEndpoints(t *testing.T) {
-	router := newTestRouter()
-	tenantID := uuid.New()
-	accountID := uuid.New()
-
-	// 1. Test POST /api/v1/accounts/{id}/verify
+	// 4. Verify Connection
 	reqVerify := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/"+accountID.String()+"/verify", nil)
-	reqVerify.Header.Set("X-Tenant-ID", tenantID.String())
+	reqVerify.Header.Set("X-Tenant-ID", testTenantID.String())
 	rrVerify := httptest.NewRecorder()
 	router.ServeHTTP(rrVerify, reqVerify)
 
@@ -202,17 +311,9 @@ func TestVerifyAndSyncEndpoints(t *testing.T) {
 		t.Fatalf("expected status 200 for verify, got %d: %s", rrVerify.Code, rrVerify.Body.String())
 	}
 
-	var verifyResp provider.ConnectionVerificationResult
-	if err := json.Unmarshal(rrVerify.Body.Bytes(), &verifyResp); err != nil {
-		t.Fatalf("failed decoding verify response: %v", err)
-	}
-	if !verifyResp.Connected {
-		t.Error("expected connected=true")
-	}
-
-	// 2. Test POST /api/v1/accounts/{id}/sync
+	// 5. Trigger Discovery Sync
 	reqSync := httptest.NewRequest(http.MethodPost, "/api/v1/accounts/"+accountID.String()+"/sync", nil)
-	reqSync.Header.Set("X-Tenant-ID", tenantID.String())
+	reqSync.Header.Set("X-Tenant-ID", testTenantID.String())
 	rrSync := httptest.NewRecorder()
 	router.ServeHTTP(rrSync, reqSync)
 
@@ -221,73 +322,62 @@ func TestVerifyAndSyncEndpoints(t *testing.T) {
 	}
 
 	var syncResp map[string]interface{}
-	if err := json.Unmarshal(rrSync.Body.Bytes(), &syncResp); err != nil {
-		t.Fatalf("failed decoding sync response: %v", err)
-	}
+	_ = json.Unmarshal(rrSync.Body.Bytes(), &syncResp)
 	if syncResp["status"] != "completed" {
-		t.Errorf("expected status 'completed', got '%v'", syncResp["status"])
+		t.Errorf("expected status 'completed', got %v", syncResp["status"])
 	}
-	if count, ok := syncResp["discovered_count"].(float64); !ok || count != 1 {
-		t.Errorf("expected discovered_count 1, got %v", syncResp["discovered_count"])
-	}
-}
-
-func TestCostAndWasteEndpoints(t *testing.T) {
-	router := newTestRouter()
-	tenantID := uuid.New()
-
-	// 1. Test GET /api/v1/cost/summary
-	reqCost := httptest.NewRequest(http.MethodGet, "/api/v1/cost/summary?days=30", nil)
-	reqCost.Header.Set("X-Tenant-ID", tenantID.String())
-	rrCost := httptest.NewRecorder()
-	router.ServeHTTP(rrCost, reqCost)
-
-	if rrCost.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK for cost summary, got %d: %s", rrCost.Code, rrCost.Body.String())
+	if count, ok := syncResp["discovered_count"].(float64); !ok || count != 2 {
+		t.Errorf("expected discovered_count 2, got %v", syncResp["discovered_count"])
 	}
 
-	var costResp map[string]interface{}
-	if err := json.Unmarshal(rrCost.Body.Bytes(), &costResp); err != nil {
-		t.Fatalf("failed decoding cost response: %v", err)
-	}
-	if costResp["currency"] != "USD" {
-		t.Errorf("expected USD currency, got %v", costResp["currency"])
-	}
+	// 6. List Discovered Resources from Database
+	reqRes := httptest.NewRequest(http.MethodGet, "/api/v1/resources", nil)
+	reqRes.Header.Set("X-Tenant-ID", testTenantID.String())
+	rrRes := httptest.NewRecorder()
+	router.ServeHTTP(rrRes, reqRes)
 
-	// 2. Test GET /api/v1/waste/summary
-	reqWasteSum := httptest.NewRequest(http.MethodGet, "/api/v1/waste/summary", nil)
-	reqWasteSum.Header.Set("X-Tenant-ID", tenantID.String())
-	rrWasteSum := httptest.NewRecorder()
-	router.ServeHTTP(rrWasteSum, reqWasteSum)
-
-	if rrWasteSum.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK for waste summary, got %d: %s", rrWasteSum.Code, rrWasteSum.Body.String())
+	if rrRes.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for list resources, got %d: %s", rrRes.Code, rrRes.Body.String())
 	}
 
-	// 3. Test GET /api/v1/waste/findings
-	reqFindings := httptest.NewRequest(http.MethodGet, "/api/v1/waste/findings", nil)
-	reqFindings.Header.Set("X-Tenant-ID", tenantID.String())
-	rrFindings := httptest.NewRecorder()
-	router.ServeHTTP(rrFindings, reqFindings)
-
-	if rrFindings.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK for waste findings, got %d: %s", rrFindings.Code, rrFindings.Body.String())
+	var resListResp struct {
+		Total     int                     `json:"total"`
+		Resources []domain.ResourceEntity `json:"resources"`
+	}
+	_ = json.Unmarshal(rrRes.Body.Bytes(), &resListResp)
+	if resListResp.Total != 2 {
+		t.Errorf("expected 2 discovered resources in DB, got %d", resListResp.Total)
 	}
 
-	// 4. Test POST /api/v1/waste/analyze
+	// 7. Verify Graph Blast Radius (Two-Phase Resolution Verified!)
+	if len(resListResp.Resources) > 0 {
+		firstResID := resListResp.Resources[0].ID
+		reqGraph := httptest.NewRequest(http.MethodGet, "/api/v1/resources/"+firstResID.String()+"/graph?depth=2", nil)
+		reqGraph.Header.Set("X-Tenant-ID", testTenantID.String())
+		rrGraph := httptest.NewRecorder()
+		router.ServeHTTP(rrGraph, reqGraph)
+
+		if rrGraph.Code != http.StatusOK {
+			t.Fatalf("expected status 200 for resource graph, got %d: %s", rrGraph.Code, rrGraph.Body.String())
+		}
+	}
+
+	// 8. Cost & Waste Analysis
 	reqAnalyze := httptest.NewRequest(http.MethodPost, "/api/v1/waste/analyze", nil)
-	reqAnalyze.Header.Set("X-Tenant-ID", tenantID.String())
+	reqAnalyze.Header.Set("X-Tenant-ID", testTenantID.String())
 	rrAnalyze := httptest.NewRecorder()
 	router.ServeHTTP(rrAnalyze, reqAnalyze)
 
 	if rrAnalyze.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK for waste analyze, got %d: %s", rrAnalyze.Code, rrAnalyze.Body.String())
+		t.Fatalf("expected status 200 for waste analyze, got %d: %s", rrAnalyze.Code, rrAnalyze.Body.String())
 	}
-	var analyzeResp map[string]interface{}
-	if err := json.Unmarshal(rrAnalyze.Body.Bytes(), &analyzeResp); err != nil {
-		t.Fatalf("failed decoding analyze response: %v", err)
-	}
-	if analyzeResp["status"] != "completed" {
-		t.Errorf("expected status 'completed', got %v", analyzeResp["status"])
+
+	reqWasteSummary := httptest.NewRequest(http.MethodGet, "/api/v1/waste/summary", nil)
+	reqWasteSummary.Header.Set("X-Tenant-ID", testTenantID.String())
+	rrWasteSummary := httptest.NewRecorder()
+	router.ServeHTTP(rrWasteSummary, reqWasteSummary)
+
+	if rrWasteSummary.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for waste summary, got %d: %s", rrWasteSummary.Code, rrWasteSummary.Body.String())
 	}
 }

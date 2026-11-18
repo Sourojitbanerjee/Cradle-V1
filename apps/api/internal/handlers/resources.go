@@ -25,6 +25,11 @@ func NewResourceHandler(pool *pgxpool.Pool) *ResourceHandler {
 
 // ListResources returns the paginated, filtered inventory of discovered resources.
 func (h *ResourceHandler) ListResources(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
@@ -67,6 +72,11 @@ func (h *ResourceHandler) ListResources(w http.ResponseWriter, r *http.Request) 
 
 // GetResourceGraph returns the blast radius / dependency subgraph around a resource.
 func (h *ResourceHandler) GetResourceGraph(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)

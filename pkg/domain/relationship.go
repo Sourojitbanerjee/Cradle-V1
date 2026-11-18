@@ -42,6 +42,8 @@ type ResourceRelationship struct {
 	TenantID         uuid.UUID              `json:"tenant_id"`
 	SourceResourceID uuid.UUID              `json:"source_resource_id"`
 	TargetResourceID uuid.UUID              `json:"target_resource_id"`
+	TargetARN        string                 `json:"target_arn,omitempty"`       // Unresolved candidate target ARN from provider
+	TargetNativeID   string                 `json:"target_native_id,omitempty"` // Unresolved candidate native ID (e.g. subnet-xxx)
 	RelationshipType RelationshipType       `json:"relationship_type"`
 	Properties       map[string]interface{} `json:"properties"`
 	IsImplicit       bool                   `json:"is_implicit"` // True if inferred/synthesized by graph analysis

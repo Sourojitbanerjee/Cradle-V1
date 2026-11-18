@@ -35,8 +35,8 @@ func WithTenantTx(ctx context.Context, pool *pgxpool.Pool, tenantID uuid.UUID, f
 	}
 	defer tx.Rollback(ctx)
 
-	// Activate PostgreSQL Row-Level Security session context
-	setQuery := "SET LOCAL app.current_tenant_id = $1"
+	// Activate PostgreSQL Row-Level Security session context using parameterized set_config (local to transaction)
+	setQuery := "SELECT set_config('app.current_tenant_id', $1, true)"
 	if _, err := tx.Exec(ctx, setQuery, tenantID.String()); err != nil {
 		return fmt.Errorf("failed to set RLS tenant context (%s): %w", tenantID, err)
 	}

@@ -220,3 +220,105 @@ func (e *Engine) ListWasteFindings(ctx context.Context, tenantID uuid.UUID, wast
 
 	return findings, err
 }
+
+// SaveMetricRollups persists telemetry summaries for resources.
+func (e *Engine) SaveMetricRollups(ctx context.Context, tenantID uuid.UUID, rollups []domain.MetricRollup) error {
+	if e.pool == nil || len(rollups) == 0 {
+		return nil
+	}
+
+	return postgres.WithTenantTx(ctx, e.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		query := `
+			INSERT INTO metric_rollups (
+				id, tenant_id, resource_id, metric_name, period_start, period_end,
+				avg_value, p95_value, max_value, min_value, sample_count, unit, created_at
+			) VALUES (
+				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW()
+			);
+		`
+		for _, r := range rollups {
+			id := r.ID
+			if id == uuid.Nil {
+				id = uuid.New()
+			}
+			if _, err := tx.Exec(ctx, query,
+				id, tenantID, r.ResourceID, r.MetricName, r.PeriodStart, r.PeriodEnd,
+				r.AvgValue, r.P95Value, r.MaxValue, r.MinValue, r.SampleCount, r.Unit,
+			); err != nil {
+				return fmt.Errorf("failed saving metric rollup for %s: %w", r.ResourceID, err)
+			}
+		}
+		return nil
+	})
+}
+
+// GetMetricRollups retrieves metric rollups for a list of resource IDs.
+func (e *Engine) GetMetricRollups(ctx context.Context, tenantID uuid.UUID, resourceIDs []uuid.UUID) (map[uuid.UUID][]domain.MetricRollup, error) {
+	result := make(map[uuid.UUID][]domain.MetricRollup)
+	if e.pool == nil || len(resourceIDs) == 0 {
+		return result, nil
+	}
+
+	err := postgres.WithTenantTx(ctx, e.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		query := `
+			SELECT id, tenant_id, resource_id, metric_name, period_start, period_end,
+				   avg_value, p95_value, max_value, min_value, sample_count, unit
+			FROM metric_rollups
+			WHERE resource_id = ANY($1)
+			ORDER BY period_start DESC;
+		`
+		rows, err := tx.Query(ctx, query, resourceIDs)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var r domain.MetricRollup
+			if err := rows.Scan(
+				&r.ID, &r.TenantID, &r.ResourceID, &r.MetricName, &r.PeriodStart, &r.PeriodEnd,
+				&r.AvgValue, &r.P95Value, &r.MaxValue, &r.MinValue, &r.SampleCount, &r.Unit,
+			); err != nil {
+				return err
+			}
+			result[r.ResourceID] = append(result[r.ResourceID], r)
+		}
+		return rows.Err()
+	})
+
+	return result, err
+}
+
+// SaveCostSnapshots persists raw cost snapshots.
+func (e *Engine) SaveCostSnapshots(ctx context.Context, tenantID uuid.UUID, snapshots []domain.CostSnapshot) error {
+	if e.pool == nil || len(snapshots) == 0 {
+		return nil
+	}
+
+	return postgres.WithTenantTx(ctx, e.pool, tenantID, func(ctx context.Context, tx pgx.Tx) error {
+		query := `
+			INSERT INTO cost_snapshots (
+				id, tenant_id, cloud_account_id, resource_id, resource_arn,
+				service_name, usage_type, period_start, period_end,
+				amount, currency, usage_quantity, usage_unit, dimensions, created_at
+			) VALUES (
+				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+			);
+		`
+		for _, s := range snapshots {
+			id := s.ID
+			if id == uuid.Nil {
+				id = uuid.New()
+			}
+			dimJSON, _ := json.Marshal(s.Dimensions)
+			if _, err := tx.Exec(ctx, query,
+				id, tenantID, s.CloudAccountID, s.ResourceID, s.ResourceARN,
+				s.ServiceName, s.UsageType, s.PeriodStart, s.PeriodEnd,
+				s.Amount, s.Currency, s.UsageQuantity, s.UsageUnit, dimJSON, s.CreatedAt,
+			); err != nil {
+				return fmt.Errorf("failed saving cost snapshot: %w", err)
+			}
+		}
+		return nil
+	})
+}

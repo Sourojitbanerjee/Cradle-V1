@@ -32,6 +32,11 @@ func NewCostHandler(pool *pgxpool.Pool) *CostHandler {
 
 // GetCostSummary handles GET /api/v1/cost/summary.
 func (h *CostHandler) GetCostSummary(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
@@ -66,6 +71,11 @@ func (h *CostHandler) GetCostSummary(w http.ResponseWriter, r *http.Request) {
 
 // GetWasteSummary handles GET /api/v1/waste/summary.
 func (h *CostHandler) GetWasteSummary(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
@@ -84,6 +94,11 @@ func (h *CostHandler) GetWasteSummary(w http.ResponseWriter, r *http.Request) {
 
 // ListWasteFindings handles GET /api/v1/waste/findings.
 func (h *CostHandler) ListWasteFindings(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
@@ -113,6 +128,11 @@ func (h *CostHandler) ListWasteFindings(w http.ResponseWriter, r *http.Request) 
 // AnalyzeWaste handles POST /api/v1/waste/analyze.
 // Runs the waste detector against current discovered resources and persists findings.
 func (h *CostHandler) AnalyzeWaste(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
@@ -129,16 +149,28 @@ func (h *CostHandler) AnalyzeWaste(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Run waste detector
+	// 2. Fetch associated metric rollups for resources
+	resourceIDs := make([]uuid.UUID, 0, len(resResult.Resources))
+	for _, res := range resResult.Resources {
+		resourceIDs = append(resourceIDs, res.ID)
+	}
+
+	metricsMap, err := h.costEngine.GetMetricRollups(r.Context(), tc.TenantID, resourceIDs)
+	if err != nil {
+		http.Error(w, `{"error": "failed retrieving metrics for waste analysis"}`, http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Run waste detector
 	dc := waste.DetectionContext{
 		Entities: resResult.Resources,
-		Metrics:  make(map[uuid.UUID][]domain.MetricRollup),
+		Metrics:  metricsMap,
 		Now:      time.Now().UTC(),
 	}
 
 	findings := h.detector.Detect(r.Context(), dc)
 
-	// 3. Persist findings to database
+	// 4. Persist findings to database
 	if err := h.costEngine.SaveWasteFindings(r.Context(), tc.TenantID, findings); err != nil {
 		http.Error(w, `{"error": "failed saving waste findings"}`, http.StatusInternalServerError)
 		return

@@ -34,6 +34,11 @@ func NewDiscoveryHandler(pool *pgxpool.Pool, orchestrator *discovery.Orchestrato
 
 // VerifyConnection handles POST /api/v1/accounts/{id}/verify.
 func (h *DiscoveryHandler) VerifyConnection(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required for cloud account operations"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
@@ -77,6 +82,11 @@ func (h *DiscoveryHandler) VerifyConnection(w http.ResponseWriter, r *http.Reque
 
 // TriggerSync handles POST /api/v1/accounts/{id}/sync.
 func (h *DiscoveryHandler) TriggerSync(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required for cloud account operations"}`, http.StatusServiceUnavailable)
+		return
+	}
+
 	tc, err := domain.TenantFromContext(r.Context())
 	if err != nil {
 		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
@@ -121,18 +131,7 @@ func (h *DiscoveryHandler) TriggerSync(w http.ResponseWriter, r *http.Request) {
 
 func (h *DiscoveryHandler) getAccount(ctx context.Context, tenantID, accountID uuid.UUID) (*domain.CloudAccount, error) {
 	if h.pool == nil {
-		// Mock account for testing/dev environments without a live DB
-		return &domain.CloudAccount{
-			ID:         accountID,
-			TenantID:   tenantID,
-			Provider:   domain.ProviderAWS,
-			AccountID:  "123456789012",
-			Name:       "Mock Account",
-			RoleARN:    "arn:aws:iam::123456789012:role/CradleControlPlaneRole",
-			ExternalID: "cradle-mock-external-id-123456789012",
-			Regions:    []string{"us-east-1"},
-			Status:     domain.AccountStatusPending,
-		}, nil
+		return nil, fmt.Errorf("database connection is required for account operations")
 	}
 
 	query := `

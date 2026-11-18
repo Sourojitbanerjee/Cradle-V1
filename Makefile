@@ -1,4 +1,9 @@
-.PHONY: all build test lint run-api run-worker docker-up docker-down clean help
+ifneq (,$(wildcard .env))
+    include .env
+    export
+endif
+
+.PHONY: all build test lint fmt run-api run-worker docker-up docker-down clean help
 
 BIN_DIR := bin
 API_BIN := $(BIN_DIR)/cradle-api
