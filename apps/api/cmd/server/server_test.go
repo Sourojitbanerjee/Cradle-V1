@@ -21,7 +21,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var defaultDevTenantID = uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
+var _ = uuid.MustParse("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11")
 
 func getTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
