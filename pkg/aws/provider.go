@@ -224,6 +224,26 @@ func (p *AWSProvider) DiscoverResources(ctx context.Context, req provider.Discov
 		}
 	}
 
+	// 8. Cost Explorer spend & usage data (Global endpoint in us-east-1)
+	if clientSetUS, err := p.factory.AssumeRoleClientSet(ctx, &req.Account, "us-east-1"); err == nil && clientSetUS.CostExplorer != nil {
+		now := time.Now().UTC()
+		startDate := now.AddDate(0, 0, -30).Format("2006-01-02")
+		endDate := now.Format("2006-01-02")
+		costSnapshots, err := adapters.FetchCostAndUsage(ctx, clientSetUS.CostExplorer, &req.Account, startDate, endDate)
+		if err != nil {
+			// Record partial error - non-fatal, does not block resource discovery
+			result.Errors = append(result.Errors, provider.ServiceError{
+				Region:    "global",
+				Service:   "costexplorer",
+				Code:      "CostExplorerAccessDenied",
+				Message:   err.Error(),
+				Retryable: false,
+			})
+		} else {
+			result.CostSnapshots = append(result.CostSnapshots, costSnapshots...)
+		}
+	}
+
 	result.CompletedAt = time.Now().UTC()
 	return result, nil
 }

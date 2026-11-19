@@ -243,6 +243,7 @@ func (h *HealthHandler) Root(w http.ResponseWriter, r *http.Request) {
             <ul class="links">
                 <li><a href="/explorer" style="border-color: var(--primary); background: rgba(59, 130, 246, 0.08);"><span><span class="method" style="background: var(--primary); color: #fff;">WEB</span> /explorer</span> <span>Visual Dependency Explorer &rarr;</span></a></li>
                 <li><a href="/inventory"><span><span class="method">WEB</span> /inventory</span> <span>Operational Inventory &rarr;</span></a></li>
+                <li><a href="/cost"><span><span class="method">WEB</span> /cost</span> <span>Cost Intelligence &amp; Explanation &rarr;</span></a></li>
                 <li><a href="/healthz"><span><span class="method">GET</span> /healthz</span> <span>Process Liveness &rarr;</span></a></li>
                 <li><a href="/readyz"><span><span class="method">GET</span> /readyz</span> <span>Database Readiness &rarr;</span></a></li>
                 <li><a href="/api/v1/tenants"><span><span class="method">GET</span> /api/v1/tenants</span> <span>Registered Tenants &rarr;</span></a></li>
@@ -270,16 +271,22 @@ func (h *HealthHandler) Root(w http.ResponseWriter, r *http.Request) {
 		"database":  dbStatus,
 		"timestamp": time.Now().UTC(),
 		"endpoints": map[string]string{
-			"explorer":  "/explorer",
-			"inventory": "/inventory",
-			"health":    "/healthz",
-			"ready":     "/readyz",
-			"tenants":   "/api/v1/tenants",
-			"accounts":  "/api/v1/accounts",
-			"resources": "/api/v1/resources",
-			"stats":     "/api/v1/graph/stats",
-			"cost":      "/api/v1/cost/summary",
-			"waste":     "/api/v1/waste/summary",
+			"explorer":       "/explorer",
+			"inventory":      "/inventory",
+			"cost_dashboard": "/cost",
+			"health":         "/healthz",
+			"ready":          "/readyz",
+			"tenants":        "/api/v1/tenants",
+			"accounts":       "/api/v1/accounts",
+			"resources":      "/api/v1/resources",
+			"stats":          "/api/v1/graph/stats",
+			"cost":           "/api/v1/cost/summary",
+			"cost_breakdown": "/api/v1/cost/breakdown",
+			"cost_trends":    "/api/v1/cost/trends",
+			"cost_forecast":  "/api/v1/cost/forecast",
+			"cost_anomalies": "/api/v1/cost/anomalies",
+			"cost_explain":   "/api/v1/cost/explain",
+			"waste":          "/api/v1/waste/summary",
 		},
 	})
 }

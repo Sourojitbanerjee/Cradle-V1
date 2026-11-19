@@ -31,6 +31,7 @@ type DiscoveryResult struct {
 	AccountID         string                        `json:"account_id"`
 	Entities          []domain.ResourceEntity       `json:"entities"`
 	Relationships     []domain.ResourceRelationship `json:"relationships"`
+	CostSnapshots     []domain.CostSnapshot         `json:"cost_snapshots,omitempty"`
 	DiscoveredRegions []string                      `json:"discovered_regions"`
 	Errors            []ServiceError                `json:"errors"`
 	StartedAt         time.Time                     `json:"started_at"`

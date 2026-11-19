@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cradle — Cloud Cost Intelligence & Explanation Engine</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg-base: #0b0f19;
+            --bg-surface: #111827;
+            --bg-elevated: #1f2937;
+            --border-dim: #1f2937;
+            --border-bright: #374151;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-purple: #8b5cf6;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; background: var(--bg-base); color: var(--text-main); }
+        button, input, select { font: inherit; }
+        button { cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: .5; }
+        :focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+        [hidden] { display: none !important; }
+        header { background: var(--bg-surface); border-bottom: 1px solid var(--border-dim); padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .brand { display: flex; align-items: center; gap: 10px; color: var(--text-main); text-decoration: none; }
+        .brand-logo { width: 28px; height: 28px; background: linear-gradient(135deg, var(--accent-green), var(--primary)); border-radius: 6px; display: grid; place-items: center; font-weight: 800; font-size: 16px; color: #fff; }
+        .brand-title { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+        .brand-subtitle { margin-left: 4px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+        .controls-strip, nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        nav a { color: var(--text-muted); text-decoration: none; padding: 6px 8px; border-radius: 6px; }
+        nav a:hover, nav a[aria-current] { color: var(--text-main); background: var(--bg-elevated); }
+        .input-group { display: flex; align-items: center; gap: 6px; background: var(--bg-base); border: 1px solid var(--border-bright); padding: 4px 8px; border-radius: 6px; }
+        .input-group label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+        .input-group input, .input-group select { background: transparent; border: 0; padding: 3px; color: var(--text-main); min-width: 0; }
+        #tenant-input { width: 270px; font-family: monospace; font-size: 12px; }
+        .action-btn { background: var(--bg-elevated); border: 1px solid var(--border-bright); color: var(--text-main); padding: 7px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; }
+        .action-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+        .primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .primary:hover:not(:disabled) { background: var(--primary-hover); color: #fff; }
+        main { max-width: 1800px; padding: 24px; margin: auto; }
+        h1, h2, h3, p { margin: 0; }
+        h1 { font-size: 24px; letter-spacing: -.025em; }
+        h2 { font-size: 15px; }
+        h3 { font-size: 13px; }
+        .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+        .description { color: var(--text-muted); line-height: 1.6; margin-top: 5px; font-size: 12px; }
+        .notice { border: 1px solid var(--border-bright); border-radius: 6px; padding: 10px 12px; line-height: 1.5; margin-bottom: 16px; }
+        .notice.error { border-color: #7f1d1d; color: #fecaca; background: #25121c; }
+        .notice.success { border-color: #065f46; color: #a7f3d0; background: #102523; }
+        .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .stat { padding: 16px; background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 8px; }
+        .stat-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+        .stat-value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+        .stat-note { color: var(--text-muted); font-size: 11px; margin-top: 5px; }
+        .panel { border: 1px solid var(--border-dim); background: var(--bg-surface); border-radius: 8px; overflow: hidden; margin-bottom: 20px; }
+        .panel-heading { padding: 16px; border-bottom: 1px solid var(--border-dim); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .explain-box { padding: 20px; background: linear-gradient(180deg, rgba(59, 130, 246, 0.05) 0%, transparent 100%); border-bottom: 1px solid var(--border-dim); }
+        .explain-headline { font-size: 18px; font-weight: 700; color: #93c5fd; line-height: 1.4; margin-bottom: 12px; }
+        .explain-headline.increased { color: #fca5a5; }
+        .explain-headline.decreased { color: #6ee7b7; }
+        .explain-periods { display: flex; gap: 20px; font-size: 12px; color: var(--text-muted); margin-bottom: 16px; }
+        .driver-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-top: 14px; }
+        .driver-card { background: var(--bg-base); border: 1px solid var(--border-dim); border-radius: 6px; padding: 14px; }
+        .driver-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px; }
+        .driver-title { font-weight: 700; font-size: 14px; }
+        .driver-delta { font-weight: 700; font-size: 14px; }
+        .driver-delta.positive { color: var(--accent-red); }
+        .driver-delta.negative { color: var(--accent-green); }
+        .driver-explanation { font-size: 12px; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px; }
+        .resource-chip { background: var(--bg-elevated); border: 1px solid var(--border-bright); border-radius: 4px; padding: 6px 8px; font-size: 11px; margin-top: 6px; }
+        .tabs { display: flex; gap: 5px; overflow-x: auto; padding: 12px 16px; border-bottom: 1px solid var(--border-dim); }
+        .tab { border: 1px solid transparent; background: transparent; color: var(--text-muted); border-radius: 6px; padding: 8px 11px; white-space: nowrap; font-size: 12px; font-weight: 600; }
+        .tab:hover { background: var(--bg-elevated); color: var(--text-main); }
+        .tab.active { background: var(--primary); color: #fff; }
+        table { border-collapse: collapse; width: 100%; text-align: left; }
+        th { background: #0e1523; padding: 11px 14px; color: var(--text-muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+        td { padding: 12px 14px; border-top: 1px solid var(--border-dim); vertical-align: top; max-width: 280px; overflow-wrap: anywhere; line-height: 1.5; }
+        tbody tr:hover { background: rgba(255,255,255,.025); }
+        .numeric { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .badge { display: inline-block; font-size: 10px; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border-bright); color: var(--text-muted); }
+        .badge-red { color: #fca5a5; background: rgba(239,68,68,.1); border-color: #7f1d1d; }
+        .badge-amber { color: #fcd34d; background: rgba(245,158,11,.1); border-color: #6b4d16; }
+        .badge-green { color: #6ee7b7; background: rgba(16,185,129,.1); border-color: #065f46; }
+        .badge-purple { color: #c4b5fd; background: rgba(139,92,246,.1); border-color: #5b21b6; }
+        .progress-bar-container { width: 100%; height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; margin-top: 5px; }
+        .progress-bar-fill { height: 100%; background: var(--primary); border-radius: 3px; }
+        .meta-source { font-size: 11px; color: var(--text-muted); font-style: italic; }
+        .ask-bar { display: flex; gap: 8px; margin-top: 14px; }
+        .ask-input { flex: 1; background: var(--bg-base); border: 1px solid var(--border-bright); border-radius: 6px; color: var(--text-main); padding: 8px 12px; }
+        .recommendation-list { list-style: square; padding-left: 20px; font-size: 12px; color: var(--text-main); line-height: 1.8; margin-top: 8px; }
+        @media (max-width: 1000px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 650px) { .stats { grid-template-columns: 1fr; } header { padding: 12px; } main { padding: 16px 12px; } }
+    </style>
+</head>
+<body>
+    <header>
+        <a class="brand" href="/">
+            <span class="brand-logo">$</span>
+            <span class="brand-title">Cradle <span class="brand-subtitle">Cost Intelligence &amp; Explanation Engine</span></span>
+        </a>
+        <nav aria-label="Main navigation">
+            <a href="/">Overview</a>
+            <a href="/explorer">Explorer</a>
+            <a href="/inventory">Inventory</a>
+            <a href="/cost" aria-current="page">Cost Intelligence</a>
+        </nav>
+        <form id="tenant-form" class="controls-strip">
+            <div class="input-group">
+                <label for="tenant-input">Tenant ID</label>
+                <input id="tenant-input" type="text" spellcheck="false" autocomplete="off" required>
+            </div>
+            <button class="action-btn" type="submit">Apply</button>
+        </form>
+    </header>
+
+    <main>
+        <div id="notice-msg" class="notice" hidden></div>
+
+        <div class="page-heading">
+            <div>
+                <h1>Cloud Cost Intelligence</h1>
+                <p class="description">Accurate AWS billing attribution, cost forecasts, statistical anomaly detection, and natural language cost explanation.</p>
+            </div>
+            <button class="action-btn primary" id="refresh-btn" type="button">Refresh Spend</button>
+        </div>
+
+        <section class="stats" aria-label="Key Spend Metrics">
+            <div class="stat">
+                <div class="stat-label">Total Observed Spend (30d)</div>
+                <div class="stat-value" id="stat-total-spend">$0.00</div>
+                <div class="stat-note" id="stat-total-source">AWS Cost Explorer (Observed)</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Estimated Monthly Spend</div>
+                <div class="stat-value" id="stat-monthly-est">$0.00</div>
+                <div class="stat-note">Run-rate based on active inventory</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">30-Day Spend Forecast</div>
+                <div class="stat-value" id="stat-forecast">$0.00</div>
+                <div class="stat-note" id="stat-forecast-band">Confidence: 85%</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">Active Cost Anomalies</div>
+                <div class="stat-value" id="stat-anomalies">0</div>
+                <div class="stat-note">Surges &gt; 25% above baseline</div>
+            </div>
+        </section>
+
+        <!-- Cost Explanation Engine -->
+        <section class="panel" aria-labelledby="explain-title">
+            <div class="panel-heading">
+                <div>
+                    <h2 id="explain-title">Cost Explanation Engine</h2>
+                    <p class="description">Evidence-based explanation of cost variances between historical periods.</p>
+                </div>
+                <button class="action-btn" id="re-explain-btn" type="button">Re-Explain</button>
+            </div>
+
+            <div class="explain-box">
+                <div id="explain-headline" class="explain-headline">Analyzing cost variances...</div>
+                <div id="explain-periods" class="explain-periods"></div>
+
+                <div class="ask-bar">
+                    <input class="ask-input" id="ask-query" type="text" placeholder="Ask: Why did our bill increase?" value="Why did our bill increase?">
+                    <button class="action-btn primary" id="ask-btn" type="button">Explain</button>
+                </div>
+
+                <div style="margin-top: 18px;">
+                    <h3>Primary Cost Drivers</h3>
+                    <div class="driver-grid" id="driver-cards"></div>
+                </div>
+
+                <div style="margin-top: 20px;" id="waste-corr-box" hidden>
+                    <h3>Correlated Inefficiencies</h3>
+                    <p class="description" id="waste-corr-text" style="color: #fcd34d;"></p>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <h3>Actionable Recommendations</h3>
+                    <ul class="recommendation-list" id="recommendation-list"></ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Cost Breakdown Section -->
+        <section class="panel" aria-labelledby="breakdown-title">
+            <div class="panel-heading">
+                <div>
+                    <h2 id="breakdown-title">Dimensional Cost Breakdown</h2>
+                    <p class="description">Attributed spend by account, region, service, team, application, and environment.</p>
+                </div>
+            </div>
+            <div class="tabs" id="dimension-tabs" role="tablist">
+                <button class="tab active" data-dim="service" type="button">By Service</button>
+                <button class="tab" data-dim="team" type="button">By Team</button>
+                <button class="tab" data-dim="application" type="button">By Application</button>
+                <button class="tab" data-dim="environment" type="button">By Environment</button>
+                <button class="tab" data-dim="account" type="button">By Account</button>
+                <button class="tab" data-dim="region" type="button">By Region</button>
+                <button class="tab" data-dim="resource" type="button">By Resource</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th scope="col">Dimension Key</th>
+                        <th scope="col">Attribution Label</th>
+                        <th scope="col" class="numeric">Spend ($)</th>
+                        <th scope="col">Share (%)</th>
+                        <th scope="col">Source &amp; Period</th>
+                    </tr>
+                </thead>
+                <tbody id="breakdown-rows">
+                    <tr><td colspan="5" style="text-align:center; padding: 24px; color: var(--text-muted);">Loading cost breakdown...</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Daily Trends & Anomalies Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <!-- Trends Panel -->
+            <section class="panel" aria-labelledby="trends-title">
+                <div class="panel-heading">
+                    <div>
+                        <h2 id="trends-title">Daily Spend Trends</h2>
+                        <p class="description">Trailing daily cost with 7-day moving average.</p>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col" class="numeric">Spend ($)</th>
+                            <th scope="col" class="numeric">7d Avg ($)</th>
+                            <th scope="col">Provenance</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trends-rows">
+                        <tr><td colspan="4" style="text-align:center; padding: 20px; color: var(--text-muted);">Loading trends...</td></tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- Anomalies Panel -->
+            <section class="panel" aria-labelledby="anomalies-title">
+                <div class="panel-heading">
+                    <div>
+                        <h2 id="anomalies-title">Cost Anomalies</h2>
+                        <p class="description">Statistical spend spikes detected against trailing baseline.</p>
+                    </div>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col">Service / Dimension</th>
+                            <th scope="col" class="numeric">Actual ($)</th>
+                            <th scope="col" class="numeric">Expected ($)</th>
+                            <th scope="col">Surge</th>
+                            <th scope="col">Severity</th>
+                        </tr>
+                    </thead>
+                    <tbody id="anomalies-rows">
+                        <tr><td colspan="6" style="text-align:center; padding: 20px; color: var(--text-muted);">No active anomalies detected.</td></tr>
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        'use strict';
+        const DEFAULT_TENANT = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+        let activeTenant = localStorage.getItem('cradle_tenant_id') || DEFAULT_TENANT;
+        let activeDimension = 'service';
+
+        const $ = id => document.getElementById(id);
+        const formatMoney = n => typeof n === 'number' && !isNaN(n) ? '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '$0.00';
+
+        function setNotice(text, isError = false) {
+            const el = $('notice-msg');
+            if (!text) { el.hidden = true; return; }
+            el.hidden = false;
+            el.textContent = text;
+            el.className = 'notice ' + (isError ? 'error' : 'success');
+        }
+
+        async function api(path, method = 'GET', body = null) {
+            const headers = { 'X-Tenant-ID': activeTenant };
+            if (body) headers['Content-Type'] = 'application/json';
+            const res = await fetch(path, {
+                method, headers,
+                body: body ? JSON.stringify(body) : null
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                throw new Error(`HTTP ${res.status}: ${text}`);
+            }
+            return await res.json();
+        }
+
+        async function loadSummaryAndForecast() {
+            try {
+                const sum = await api('/api/v1/cost/summary?days=30');
+                $('stat-total-spend').textContent = formatMoney(sum.total_cost);
+
+                const fc = await api('/api/v1/cost/forecast?days=30');
+                $('stat-monthly-est').textContent = formatMoney(fc.estimated_monthly_spend);
+                $('stat-forecast').textContent = formatMoney(fc.forecasted_period_spend);
+                $('stat-forecast-band').textContent = `80% Band: ${formatMoney(fc.confidence_interval_low)} – ${formatMoney(fc.confidence_interval_high)}`;
+            } catch (err) {
+                console.warn('Cost summary failed:', err);
+            }
+        }
+
+        async function loadExplanation() {
+            try {
+                $('explain-headline').textContent = 'Analyzing historical cost variances and resource changes...';
+                const exp = await api('/api/v1/cost/explain');
+
+                $('explain-headline').textContent = exp.headline;
+                $('explain-headline').className = 'explain-headline ' + (exp.direction === 'INCREASED' ? 'increased' : (exp.direction === 'DECREASED' ? 'decreased' : ''));
+                $('explain-periods').textContent = `Current Window: ${exp.current_period_start.slice(0, 10)} to ${exp.current_period_end.slice(0, 10)} ($${exp.current_total_amount.toFixed(2)}) · Previous Window: ${exp.previous_period_start.slice(0, 10)} to ${exp.previous_period_end.slice(0, 10)} ($${exp.previous_total_amount.toFixed(2)})`;
+
+                const container = $('driver-cards');
+                container.innerHTML = '';
+                if (!exp.primary_drivers || exp.primary_drivers.length === 0) {
+                    container.innerHTML = '<div style="color:var(--text-muted); padding:10px;">No significant cost variance detected across services.</div>';
+                } else {
+                    exp.primary_drivers.forEach(d => {
+                        const card = document.createElement('div');
+                        card.className = 'driver-card';
+                        const isPos = d.delta_amount > 0;
+                        let resHtml = '';
+                        if (d.resource_changes && d.resource_changes.length > 0) {
+                            resHtml = '<div style="margin-top:8px; font-weight:600; font-size:11px; color:var(--text-muted);">Correlated Resource Changes:</div>' +
+                                d.resource_changes.map(r => `
+                                    <div class="resource-chip">
+                                        <strong>${r.resource_name || r.native_id}</strong> (${r.resource_type})<br>
+                                        <span style="color:#93c5fd;">${r.explanation}</span><br>
+                                        <span style="color:var(--text-muted);">Team: ${r.team || 'UNKNOWN'} · Env: ${r.environment || 'UNKNOWN'}</span>
+                                    </div>
+                                `).join('');
+                        }
+                        card.innerHTML = `
+                            <div class="driver-header">
+                                <span class="driver-title">${d.service_name}</span>
+                                <span class="driver-delta ${isPos ? 'positive' : 'negative'}">${isPos ? '+' : ''}${formatMoney(d.delta_amount)} (${d.percentage_change > 0 ? '+' : ''}${d.percentage_change.toFixed(1)}%)</span>
+                            </div>
+                            <div class="driver-explanation">${d.explanation}</div>
+                            ${resHtml}
+                        `;
+                        container.appendChild(card);
+                    });
+                }
+
+                if (exp.waste_correlation) {
+                    $('waste-corr-box').hidden = false;
+                    $('waste-corr-text').textContent = exp.waste_correlation;
+                } else {
+                    $('waste-corr-box').hidden = true;
+                }
+
+                const recList = $('recommendation-list');
+                recList.innerHTML = '';
+                (exp.recommendations || []).forEach(r => {
+                    const li = document.createElement('li');
+                    li.textContent = r;
+                    recList.appendChild(li);
+                });
+            } catch (err) {
+                $('explain-headline').textContent = 'Could not generate explanation: ' + err.message;
+            }
+        }
+
+        async function loadBreakdown(dim) {
+            try {
+                const res = await api(`/api/v1/cost/breakdown?dimension=${dim}&days=30`);
+                const tbody = $('breakdown-rows');
+                tbody.innerHTML = '';
+                if (!res.items || res.items.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px; color: var(--text-muted);">No spend recorded for this dimension.</td></tr>';
+                    return;
+                }
+                res.items.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="font-weight:600;">${item.key}</td>
+                        <td>${item.name || 'UNKNOWN'}</td>
+                        <td class="numeric">${formatMoney(item.amount)}</td>
+                        <td>
+                            <span>${item.percentage.toFixed(1)}%</span>
+                            <div class="progress-bar-container"><div class="progress-bar-fill" style="width: ${Math.min(100, item.percentage)}%;"></div></div>
+                        </td>
+                        <td class="meta-source">${item.source} (${item.period_start.slice(0, 10)} to ${item.period_end.slice(0, 10)})</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                $('breakdown-rows').innerHTML = `<tr><td colspan="5" style="color:var(--accent-red); padding: 20px;">Failed loading breakdown: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function loadTrends() {
+            try {
+                const res = await api('/api/v1/cost/trends?granularity=daily&days=14');
+                const tbody = $('trends-rows');
+                tbody.innerHTML = '';
+                if (!res.points || res.points.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--text-muted);">No daily trend points available.</td></tr>';
+                    return;
+                }
+                res.points.slice(-14).forEach(p => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${p.date}</td>
+                        <td class="numeric">${formatMoney(p.amount)}</td>
+                        <td class="numeric">${p.moving_average ? formatMoney(p.moving_average) : '—'}</td>
+                        <td class="meta-source">${p.source}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                $('trends-rows').innerHTML = `<tr><td colspan="4" style="color:var(--accent-red); padding:20px;">Trends error: ${err.message}</td></tr>`;
+            }
+        }
+
+        async function loadAnomalies() {
+            try {
+                const anomalies = await api('/api/v1/cost/anomalies?days=30');
+                $('stat-anomalies').textContent = anomalies.length || 0;
+                const tbody = $('anomalies-rows');
+                tbody.innerHTML = '';
+                if (!anomalies || anomalies.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:var(--text-muted);">No active anomalies detected across infrastructure.</td></tr>';
+                    return;
+                }
+                anomalies.forEach(a => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${a.anomaly_date.slice(0, 10)}</td>
+                        <td style="font-weight:600;">${a.dimension_value}</td>
+                        <td class="numeric">${formatMoney(a.actual_amount)}</td>
+                        <td class="numeric">${formatMoney(a.expected_amount)}</td>
+                        <td style="color:var(--accent-red); font-weight:600;">+${a.percentage_surge.toFixed(0)}%</td>
+                        <td><span class="badge ${a.severity === 'critical' ? 'badge-red' : (a.severity === 'high' ? 'badge-amber' : 'badge-purple')}">${a.severity.toUpperCase()}</span></td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.warn('Anomalies error:', err);
+            }
+        }
+
+        function refreshAll() {
+            loadSummaryAndForecast();
+            loadExplanation();
+            loadBreakdown(activeDimension);
+            loadTrends();
+            loadAnomalies();
+        }
+
+        // Tab switching
+        $('dimension-tabs').querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                $('dimension-tabs').querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                activeDimension = btn.dataset.dim;
+                loadBreakdown(activeDimension);
+            });
+        });
+
+        $('tenant-form').addEventListener('submit', e => {
+            e.preventDefault();
+            const val = $('tenant-input').value.trim();
+            if (val) {
+                activeTenant = val;
+                localStorage.setItem('cradle_tenant_id', val);
+                setNotice(`Active tenant updated to ${val}`, false);
+                refreshAll();
+            }
+        });
+
+        $('refresh-btn').addEventListener('click', refreshAll);
+        $('re-explain-btn').addEventListener('click', loadExplanation);
+        $('ask-btn').addEventListener('click', loadExplanation);
+
+        // Init
+        $('tenant-input').value = activeTenant;
+        refreshAll();
+    </script>
+</body>
+</html>

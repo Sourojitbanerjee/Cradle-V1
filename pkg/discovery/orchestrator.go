@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cradle-dev/cradle/pkg/cost"
 	"github.com/cradle-dev/cradle/pkg/domain"
 	"github.com/cradle-dev/cradle/pkg/graph"
 	"github.com/cradle-dev/cradle/pkg/provider"
@@ -17,9 +18,10 @@ import (
 
 // Orchestrator coordinates cloud infrastructure discovery, state upserts, and audit records.
 type Orchestrator struct {
-	pool     *pgxpool.Pool
-	registry *provider.Registry
-	resolver *graph.Resolver
+	pool       *pgxpool.Pool
+	registry   *provider.Registry
+	resolver   *graph.Resolver
+	costEngine *cost.Engine
 }
 
 // NewOrchestrator creates a new discovery orchestrator.
@@ -28,9 +30,10 @@ func NewOrchestrator(pool *pgxpool.Pool, registry *provider.Registry) *Orchestra
 		registry = provider.DefaultRegistry
 	}
 	return &Orchestrator{
-		pool:     pool,
-		registry: registry,
-		resolver: graph.NewResolver(),
+		pool:       pool,
+		registry:   registry,
+		resolver:   graph.NewResolver(),
+		costEngine: cost.NewEngine(pool),
 	}
 }
 
@@ -154,7 +157,14 @@ func (o *Orchestrator) persistDiscoveryResult(ctx context.Context, account *doma
 			}
 		}
 
-		// 3. Update cloud_accounts status & last_discovered_at
+		// 3. Persist Cost Explorer snapshots if discovered
+		if len(result.CostSnapshots) > 0 && o.costEngine != nil {
+			if err := o.costEngine.SaveCostSnapshots(ctx, account.TenantID, result.CostSnapshots); err != nil {
+				return fmt.Errorf("failed persisting cost snapshots: %w", err)
+			}
+		}
+
+		// 4. Update cloud_accounts status & last_discovered_at
 		status := "connected"
 		jobStatus := "completed"
 		if len(result.Errors) > 0 {

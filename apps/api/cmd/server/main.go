@@ -134,6 +134,8 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 	r.Get("/explorer", explorerHandler.ServeHTTP)
 	inventoryHandler := handlers.NewInventoryHandler(pool)
 	r.Get("/inventory", inventoryHandler.Page)
+	costHandler := handlers.NewCostHandler(pool)
+	r.Get("/cost", costHandler.Page)
 	r.Get("/healthz", healthHandler.Liveness)
 	r.Get("/readyz", healthHandler.Readiness)
 
@@ -145,7 +147,6 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 	orchestrator := discovery.NewOrchestrator(pool, provider.DefaultRegistry)
 	discoveryHandler := handlers.NewDiscoveryHandler(pool, orchestrator, provider.DefaultRegistry)
 	jobsHandler := handlers.NewJobsHandler(pool)
-	costHandler := handlers.NewCostHandler(pool)
 
 	r.Route("/api/v1", func(api chi.Router) {
 		// Tenant Onboarding & Management (Public)
@@ -194,9 +195,15 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 			// Discovery Job History
 			authed.Get("/discovery/jobs", jobsHandler.ListDiscoveryJobs)
 
-			// Cost Intelligence
+			// Cost Intelligence & Explanation Engine
 			authed.Route("/cost", func(c chi.Router) {
 				c.Get("/summary", costHandler.GetCostSummary)
+				c.Get("/breakdown", costHandler.GetCostBreakdown)
+				c.Get("/trends", costHandler.GetCostTrends)
+				c.Get("/forecast", costHandler.GetCostForecast)
+				c.Get("/anomalies", costHandler.GetCostAnomalies)
+				c.Get("/explain", costHandler.ExplainCostChanges)
+				c.Post("/explain", costHandler.ExplainCostChanges)
 			})
 
 			// Waste Detection & Savings Findings

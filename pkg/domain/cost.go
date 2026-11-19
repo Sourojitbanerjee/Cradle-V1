@@ -120,3 +120,148 @@ func (w *WasteFinding) Validate() error {
 	}
 	return nil
 }
+
+// CostBreakdownItem represents one row in a dimensional cost breakdown.
+type CostBreakdownItem struct {
+	Key           string    `json:"key"`           // e.g. "Amazon Elastic Compute Cloud", "us-east-1", "payments"
+	Name          string    `json:"name"`          // Human-friendly label
+	Amount        float64   `json:"amount"`        // Cost in currency
+	Percentage    float64   `json:"percentage"`    // % of total
+	ResourceCount int       `json:"resource_count,omitempty"`
+	Currency      string    `json:"currency"`
+	Source        string    `json:"source"`
+	PeriodStart   time.Time `json:"period_start"`
+	PeriodEnd     time.Time `json:"period_end"`
+}
+
+// CostBreakdownResult encapsulates a complete dimensional cost breakdown.
+type CostBreakdownResult struct {
+	Dimension   string              `json:"dimension"` // "account", "region", "service", "resource", "team", "application", "environment"
+	TotalAmount float64             `json:"total_amount"`
+	Currency    string              `json:"currency"`
+	PeriodStart time.Time           `json:"period_start"`
+	PeriodEnd   time.Time           `json:"period_end"`
+	Source      string              `json:"source"`
+	Items       []CostBreakdownItem `json:"items"`
+}
+
+// CostTrendPoint represents spend for a single time bucket (day or month).
+type CostTrendPoint struct {
+	Date          string  `json:"date"` // YYYY-MM-DD or YYYY-MM
+	Amount        float64 `json:"amount"`
+	MovingAverage float64 `json:"moving_average,omitempty"` // 7-day rolling average
+	Currency      string  `json:"currency"`
+	Source        string  `json:"source"`
+}
+
+// CostTrendsResult encapsulates historical spend trends.
+type CostTrendsResult struct {
+	Granularity string           `json:"granularity"` // "daily" or "monthly"
+	TotalAmount float64          `json:"total_amount"`
+	Currency    string           `json:"currency"`
+	PeriodStart time.Time        `json:"period_start"`
+	PeriodEnd   time.Time        `json:"period_end"`
+	Source      string           `json:"source"`
+	Points      []CostTrendPoint `json:"points"`
+}
+
+// CostAnomaly represents a statistically significant, unexpected spend deviation.
+type CostAnomaly struct {
+	ID              uuid.UUID `json:"id"`
+	TenantID        uuid.UUID `json:"tenant_id"`
+	CloudAccountID  *uuid.UUID `json:"cloud_account_id,omitempty"`
+	AnomalyDate     time.Time `json:"anomaly_date"`
+	DimensionType   string    `json:"dimension_type"`  // "service", "account", "region", "total"
+	DimensionValue  string    `json:"dimension_value"` // e.g. "Amazon Elastic Kubernetes Service"
+	ActualAmount    float64   `json:"actual_amount"`
+	ExpectedAmount  float64   `json:"expected_amount"`
+	DeviationAmount float64   `json:"deviation_amount"`
+	PercentageSurge float64   `json:"percentage_surge"`
+	Severity        string    `json:"severity"` // "critical", "high", "medium"
+	Status          string    `json:"status"`   // "active", "acknowledged", "resolved"
+	Evidence        []string  `json:"evidence"`
+	Source          string    `json:"source"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+// DailyForecastPoint represents a projected daily cost value.
+type DailyForecastPoint struct {
+	Date            string  `json:"date"` // YYYY-MM-DD
+	PredictedAmount float64 `json:"predicted_amount"`
+	LowerBound      float64 `json:"lower_bound"`
+	UpperBound      float64 `json:"upper_bound"`
+}
+
+// CostForecastResult provides forward-looking spend estimates with confidence bands.
+type CostForecastResult struct {
+	ForecastDays           int                  `json:"forecast_days"`
+	PeriodStart            time.Time            `json:"period_start"`
+	PeriodEnd              time.Time            `json:"period_end"`
+	EstimatedMonthlySpend  float64              `json:"estimated_monthly_spend"`
+	ForecastedPeriodSpend  float64              `json:"forecasted_period_spend"`
+	ConfidenceIntervalLow  float64              `json:"confidence_interval_low"`
+	ConfidenceIntervalHigh float64              `json:"confidence_interval_high"`
+	Currency               string               `json:"currency"`
+	Methodology            string               `json:"methodology"`
+	Confidence             float64              `json:"confidence"`
+	Source                 string               `json:"source"`
+	DailyForecast          []DailyForecastPoint `json:"daily_forecast"`
+}
+
+// ResourceChangeExplanation details an infrastructure modification explaining a cost driver.
+type ResourceChangeExplanation struct {
+	ChangeType      string    `json:"change_type"` // "ADDED", "MODIFIED", "SCALED", "USAGE_SURGE", "DELETED"
+	ResourceName    string    `json:"resource_name"`
+	ResourceType    string    `json:"resource_type"`
+	NativeID        string    `json:"native_id,omitempty"`
+	Explanation     string    `json:"explanation"`
+	Team            string    `json:"team,omitempty"`
+	Application     string    `json:"application,omitempty"`
+	Environment     string    `json:"environment,omitempty"`
+	EstimatedImpact float64   `json:"estimated_impact"`
+	ObservedAt      time.Time `json:"observed_at"`
+}
+
+// CostDriver isolates a single service contributing to an overall cost variance.
+type CostDriver struct {
+	ServiceName      string                      `json:"service_name"`
+	PreviousAmount   float64                     `json:"previous_amount"`
+	CurrentAmount    float64                     `json:"current_amount"`
+	DeltaAmount      float64                     `json:"delta_amount"`
+	PercentageChange float64                     `json:"percentage_change"`
+	ShareOfIncrease  float64                     `json:"share_of_increase"` // % of total increase
+	Explanation      string                      `json:"explanation"`
+	ResourceChanges  []ResourceChangeExplanation `json:"resource_changes,omitempty"`
+}
+
+// AttributionItem groups spend delta by operational dimension.
+type AttributionItem struct {
+	Name             string  `json:"name"`
+	PreviousAmount   float64 `json:"previous_amount"`
+	CurrentAmount    float64 `json:"current_amount"`
+	DeltaAmount      float64 `json:"delta_amount"`
+	PercentageChange float64 `json:"percentage_change"`
+}
+
+// CostExplanation provides an evidence-based answer to "Why did our bill increase?".
+type CostExplanation struct {
+	Headline               string            `json:"headline"`
+	Direction              string            `json:"direction"` // "INCREASED", "DECREASED", "STABLE"
+	PreviousPeriodStart    time.Time         `json:"previous_period_start"`
+	PreviousPeriodEnd      time.Time         `json:"previous_period_end"`
+	PreviousTotalAmount    float64           `json:"previous_total_amount"`
+	CurrentPeriodStart     time.Time         `json:"current_period_start"`
+	CurrentPeriodEnd       time.Time         `json:"current_period_end"`
+	CurrentTotalAmount     float64           `json:"current_total_amount"`
+	DeltaAmount            float64           `json:"delta_amount"`
+	PercentageChange       float64           `json:"percentage_change"`
+	Currency               string            `json:"currency"`
+	PrimaryDrivers         []CostDriver      `json:"primary_drivers"`
+	TeamAttribution        []AttributionItem `json:"team_attribution"`
+	ApplicationAttribution []AttributionItem `json:"application_attribution"`
+	EnvironmentAttribution []AttributionItem `json:"environment_attribution"`
+	WasteCorrelation       string            `json:"waste_correlation,omitempty"`
+	Recommendations        []string          `json:"recommendations"`
+	Source                 string            `json:"source"`
+	GeneratedAt            time.Time         `json:"generated_at"`
+}
