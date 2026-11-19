@@ -74,6 +74,7 @@ type ResourceEntity struct {
 	CreatedAt           time.Time              `json:"created_at"`
 	UpdatedAt           time.Time              `json:"updated_at"`
 	DeletedAt           *time.Time             `json:"deleted_at,omitempty"`
+	Operational         *OperationalInventory  `json:"operational,omitempty"`
 }
 
 // Validate checks essential invariants for a ResourceEntity.

@@ -242,6 +242,7 @@ func (h *HealthHandler) Root(w http.ResponseWriter, r *http.Request) {
             <h2>Interactive Tools &amp; Core APIs</h2>
             <ul class="links">
                 <li><a href="/explorer" style="border-color: var(--primary); background: rgba(59, 130, 246, 0.08);"><span><span class="method" style="background: var(--primary); color: #fff;">WEB</span> /explorer</span> <span>Visual Dependency Explorer &rarr;</span></a></li>
+                <li><a href="/inventory"><span><span class="method">WEB</span> /inventory</span> <span>Operational Inventory &rarr;</span></a></li>
                 <li><a href="/healthz"><span><span class="method">GET</span> /healthz</span> <span>Process Liveness &rarr;</span></a></li>
                 <li><a href="/readyz"><span><span class="method">GET</span> /readyz</span> <span>Database Readiness &rarr;</span></a></li>
                 <li><a href="/api/v1/tenants"><span><span class="method">GET</span> /api/v1/tenants</span> <span>Registered Tenants &rarr;</span></a></li>
@@ -270,6 +271,7 @@ func (h *HealthHandler) Root(w http.ResponseWriter, r *http.Request) {
 		"timestamp": time.Now().UTC(),
 		"endpoints": map[string]string{
 			"explorer":  "/explorer",
+			"inventory": "/inventory",
 			"health":    "/healthz",
 			"ready":     "/readyz",
 			"tenants":   "/api/v1/tenants",

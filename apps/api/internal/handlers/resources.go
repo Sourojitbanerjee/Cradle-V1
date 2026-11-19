@@ -7,6 +7,7 @@ import (
 
 	"github.com/cradle-dev/cradle/pkg/domain"
 	"github.com/cradle-dev/cradle/pkg/graph"
+	"github.com/cradle-dev/cradle/pkg/inventory"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -68,6 +69,25 @@ func (h *ResourceHandler) ListResources(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if len(result.Resources) > 0 {
+		ids := make([]uuid.UUID, 0, len(result.Resources))
+		for _, resource := range result.Resources {
+			ids = append(ids, resource.ID)
+		}
+		enriched, err := inventory.NewEngine(h.pool).ResourcesByID(r.Context(), tc.TenantID, ids)
+		if err != nil {
+			http.Error(w, `{"error": "failed to resolve operational inventory"}`, http.StatusInternalServerError)
+			return
+		}
+		byID := make(map[uuid.UUID]*domain.OperationalInventory, len(enriched))
+		for _, resource := range enriched {
+			byID[resource.ID] = resource.Operational
+		}
+		for i := range result.Resources {
+			result.Resources[i].Operational = byID[result.Resources[i].ID]
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(result)
 }
@@ -102,6 +122,16 @@ func (h *ResourceHandler) GetResource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	enriched, err := inventory.NewEngine(h.pool).ResourcesByID(r.Context(), tc.TenantID, []uuid.UUID{resourceID})
+	if err != nil {
+		http.Error(w, `{"error": "failed to resolve operational inventory"}`, http.StatusInternalServerError)
+		return
+	}
+	if len(enriched) == 0 {
+		http.Error(w, `{"error": "resource not found"}`, http.StatusNotFound)
+		return
+	}
+	res.Operational = enriched[0].Operational
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(res)
 }

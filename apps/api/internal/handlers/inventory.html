@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cradle — Operational Inventory</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg-base: #0b0f19;
+            --bg-surface: #111827;
+            --bg-elevated: #1f2937;
+            --border-dim: #1f2937;
+            --border-bright: #374151;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --accent-amber: #f59e0b;
+            --accent-green: #10b981;
+            --accent-purple: #8b5cf6;
+            --accent-red: #ef4444;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; background: var(--bg-base); color: var(--text-main); }
+        button, input, select { font: inherit; }
+        button, a, input, select, summary { -webkit-tap-highlight-color: transparent; }
+        button { cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: .5; }
+        :focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+        [hidden] { display: none !important; }
+        header { background: var(--bg-surface); border-bottom: 1px solid var(--border-dim); padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .brand { display: flex; align-items: center; gap: 10px; color: var(--text-main); text-decoration: none; }
+        .brand-logo { width: 28px; height: 28px; background: linear-gradient(135deg, var(--primary), var(--accent-purple)); border-radius: 6px; display: grid; place-items: center; font-weight: 800; font-size: 16px; color: #fff; }
+        .brand-title { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+        .brand-subtitle { margin-left: 4px; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+        .controls-strip, nav { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        nav a { color: var(--text-muted); text-decoration: none; padding: 6px 8px; border-radius: 6px; }
+        nav a:hover, nav a[aria-current] { color: var(--text-main); background: var(--bg-elevated); }
+        .input-group { display: flex; align-items: center; gap: 6px; background: var(--bg-base); border: 1px solid var(--border-bright); padding: 4px 8px; border-radius: 6px; }
+        .input-group label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; }
+        .input-group input, .input-group select { background: transparent; border: 0; padding: 3px; color: var(--text-main); min-width: 0; }
+        #tenant-input { width: 270px; font-family: monospace; font-size: 12px; }
+        #tenant-select { max-width: 180px; }
+        .action-btn { background: var(--bg-elevated); border: 1px solid var(--border-bright); color: var(--text-main); padding: 7px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; text-decoration: none; }
+        .action-btn:hover:not(:disabled) { border-color: var(--primary); color: var(--primary); }
+        .primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .primary:hover:not(:disabled) { background: var(--primary-hover); color: #fff; }
+        .danger:hover:not(:disabled) { border-color: var(--accent-red); color: var(--accent-red); }
+        main { max-width: 1800px; padding: 24px; margin: auto; }
+        h1, h2, h3, p { margin: 0; }
+        h1 { font-size: 24px; letter-spacing: -.025em; }
+        h2 { font-size: 15px; }
+        h3 { font-size: 13px; }
+        .page-heading, .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .page-heading { margin-bottom: 18px; }
+        .muted { color: var(--text-muted); }
+        .description { color: var(--text-muted); line-height: 1.6; margin-top: 5px; font-size: 12px; }
+        .notice { border: 1px solid var(--border-bright); border-radius: 6px; padding: 10px 12px; line-height: 1.5; overflow-wrap: anywhere; white-space: pre-wrap; }
+        .error { border-color: #7f1d1d; color: #fecaca; background: #25121c; }
+        .success { border-color: #065f46; color: #a7f3d0; background: #102523; }
+        #tenant-message { margin-bottom: 16px; }
+        .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .stat { padding: 16px; background: var(--bg-surface); border: 1px solid var(--border-dim); border-radius: 8px; }
+        .stat-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+        .stat-value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+        .stat-note { color: var(--text-muted); font-size: 11px; margin-top: 5px; }
+        #summary-error { margin-bottom: 16px; }
+        .panel { border: 1px solid var(--border-dim); background: var(--bg-surface); border-radius: 8px; overflow: hidden; margin-bottom: 18px; }
+        .panel-heading { padding: 16px; border-bottom: 1px solid var(--border-dim); }
+        .tabs { display: flex; gap: 5px; overflow-x: auto; padding: 12px 16px; border-bottom: 1px solid var(--border-dim); }
+        .tab { border: 1px solid transparent; background: transparent; color: var(--text-muted); border-radius: 6px; padding: 8px 11px; white-space: nowrap; font-size: 12px; font-weight: 600; }
+        .tab:hover { background: var(--bg-elevated); color: var(--text-main); }
+        .tab.active { background: var(--primary); color: #fff; }
+        .tab-count { margin-left: 7px; font-size: 11px; opacity: .85; }
+        .filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; padding: 16px; border-bottom: 1px solid var(--border-dim); }
+        .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+        .field label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+        .field input, .field select { width: 100%; background: var(--bg-base); border: 1px solid var(--border-bright); border-radius: 6px; color: var(--text-main); padding: 8px 10px; }
+        .filters .field { flex: 1 1 130px; }
+        .filters .search-field { flex: 2 1 230px; }
+        .filters .cost-field { flex: 0 1 150px; }
+        .table-scroll { overflow-x: auto; }
+        table { border-collapse: collapse; width: 100%; text-align: left; }
+        th { background: #0e1523; padding: 11px 14px; color: var(--text-muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+        td { padding: 13px 14px; border-top: 1px solid var(--border-dim); vertical-align: top; max-width: 260px; overflow-wrap: anywhere; line-height: 1.5; }
+        #resource-table { min-width: 1200px; }
+        #resource-table td:first-child { min-width: 220px; }
+        tbody tr:hover { background: rgba(255,255,255,.025); }
+        .resource-link { background: transparent; border: 0; padding: 0; text-align: left; color: #93c5fd; font-weight: 600; overflow-wrap: anywhere; }
+        .resource-link:hover { text-decoration: underline; }
+        .sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; overflow-wrap: anywhere; }
+        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+        .unknown { color: var(--text-muted); font-size: 11px; letter-spacing: .03em; }
+        .numeric { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+        .badge { display: inline-block; font-size: 10px; padding: 3px 6px; border-radius: 4px; border: 1px solid var(--border-bright); color: var(--text-muted); margin: 0 4px 4px 0; overflow-wrap: anywhere; }
+        .badge-amber { color: #fcd34d; background: rgba(245,158,11,.1); border-color: #6b4d16; }
+        .badge-red { color: #fca5a5; background: rgba(239,68,68,.1); border-color: #7f1d1d; }
+        .badge-green { color: #6ee7b7; background: rgba(16,185,129,.1); border-color: #065f46; }
+        .badge-purple { color: #c4b5fd; background: rgba(139,92,246,.1); border-color: #5b21b6; }
+        .empty { text-align: center; color: var(--text-muted); padding: 36px 20px; line-height: 1.8; }
+        .pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--border-dim); font-size: 12px; color: var(--text-muted); }
+        .pagination-controls { display: flex; align-items: center; gap: 8px; }
+        #page-size { background: var(--bg-base); color: var(--text-main); border: 1px solid var(--border-bright); border-radius: 6px; padding: 5px; }
+        .secondary-grid { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(520px, 1.4fr); gap: 18px; align-items: start; }
+        #groups-table { min-width: 520px; }
+        .group-scroll { max-height: 520px; overflow: auto; }
+        .group-scroll th { position: sticky; top: 0; z-index: 1; }
+        .rule-layout { padding: 16px; }
+        #rule-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .full-width { grid-column: 1 / -1; }
+        .form-section { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); padding-top: 6px; }
+        .check-field { display: flex; align-items: center; gap: 8px; }
+        .check-field input { accent-color: var(--primary); }
+        .form-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        #rule-message { margin-top: 12px; }
+        .rules-heading { margin: 22px 0 12px; display: flex; align-items: center; justify-content: space-between; }
+        .rule-card { padding: 12px; background: var(--bg-base); border: 1px solid var(--border-dim); border-radius: 6px; margin-top: 8px; }
+        .rule-card-header { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+        .rule-matcher { margin-top: 7px; color: #c4b5fd; overflow-wrap: anywhere; }
+        .assignments { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .assignments span { color: var(--text-muted); font-size: 11px; background: var(--bg-elevated); padding: 4px 6px; border-radius: 4px; overflow-wrap: anywhere; }
+        #inspector { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(620px, 100vw); max-width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-left: 1px solid var(--border-bright); padding: 0; background: var(--bg-surface); color: var(--text-main); box-shadow: -12px 0 40px rgba(0,0,0,.4); }
+        #inspector::backdrop { background: rgba(0,0,0,.6); }
+        .drawer-heading { position: sticky; top: 0; z-index: 2; background: var(--bg-surface); display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 18px; border-bottom: 1px solid var(--border-bright); }
+        #inspector-title { overflow-wrap: anywhere; }
+        .drawer-body { padding: 18px; }
+        .section-card { background: var(--bg-base); border: 1px solid var(--border-dim); border-radius: 6px; padding: 14px; margin-bottom: 14px; }
+        .section-title { font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .05em; margin-bottom: 12px; }
+        .kv-row { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border-dim); overflow-wrap: anywhere; }
+        .kv-row:last-child { border: 0; }
+        .kv-key { color: var(--text-muted); font-size: 12px; }
+        .answer-header { display: flex; align-items: start; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+        .answer-value { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; text-align: right; }
+        .provenance { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        details { margin-top: 10px; }
+        summary { color: var(--text-muted); font-size: 12px; cursor: pointer; }
+        .json-view { padding: 10px; background: #080c14; border: 1px solid var(--border-dim); border-radius: 4px; color: #cbd5e1; font-size: 11px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
+        @media (max-width: 1200px) { .secondary-grid { grid-template-columns: 1fr; } }
+        @media (max-width: 650px) {
+            header { padding: 12px; }
+            main { padding: 16px 12px; }
+            .brand-subtitle { display: none; }
+            .controls-strip { width: 100%; }
+            .input-group { max-width: 100%; }
+            #tenant-input { width: 245px; }
+            .stats { gap: 8px; }
+            .stat { padding: 12px; }
+            .stat-label { font-size: 10px; }
+            .stat-value { font-size: 22px; }
+            .page-heading, .panel-heading { align-items: start; }
+            #rule-form { grid-template-columns: 1fr; }
+            .kv-row { grid-template-columns: 100px minmax(0, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <a class="brand" href="/">
+            <span class="brand-logo">C</span>
+            <span class="brand-title">Cradle <span class="brand-subtitle">Operational Inventory</span></span>
+        </a>
+        <nav aria-label="Main navigation">
+            <a href="/">Overview</a>
+            <a href="/explorer">Explorer</a>
+            <a href="/inventory" aria-current="page">Inventory</a>
+        </nav>
+        <form id="tenant-form" class="controls-strip">
+            <div class="input-group">
+                <label for="tenant-select">Tenant</label>
+                <select id="tenant-select" disabled><option value="">Loading tenants…</option></select>
+            </div>
+            <div class="input-group">
+                <label for="tenant-input">ID</label>
+                <input id="tenant-input" type="text" spellcheck="false" autocomplete="off" aria-label="Active tenant ID" required>
+            </div>
+            <button class="action-btn" id="apply-tenant" type="submit">Apply</button>
+            <button class="action-btn" id="retry-tenants" type="button" hidden>Retry tenants</button>
+        </form>
+    </header>
+    <main>
+        <div id="tenant-message" class="notice" role="status" hidden></div>
+        <div class="page-heading">
+            <div>
+                <h1>Operational inventory</h1>
+                <p class="description">Who owns it, what it supports, and why it exists. Unknown answers stay UNKNOWN.</p>
+                <p class="description" id="active-tenant">Choose a tenant to load inventory.</p>
+            </div>
+            <button type="button" class="action-btn" id="refresh-all" disabled>Refresh</button>
+        </div>
+        <section class="stats" aria-label="Tenant inventory summary" id="summary-stats">
+            <div class="stat"><div class="stat-label">Total resources</div><div class="stat-value" id="stat-total">—</div><div class="stat-note">Entire tenant inventory</div></div>
+            <div class="stat"><div class="stat-label">Unknown ownership</div><div class="stat-value" id="stat-unowned">—</div><div class="stat-note">Ownership not established</div></div>
+            <div class="stat"><div class="stat-label">Untagged</div><div class="stat-value" id="stat-untagged">—</div><div class="stat-note">Reported by tag analysis</div></div>
+        </section>
+        <div id="summary-error" class="notice error" role="alert" hidden></div>
+        <section class="panel" aria-labelledby="inventory-title">
+            <div class="panel-heading">
+                <div><h2 id="inventory-title">Resources</h2><p class="description">Select a resource to inspect evidence, candidates, and tag issues.</p></div>
+                <span id="list-status" class="muted" role="status" aria-live="polite"></span>
+            </div>
+            <div class="tabs" id="view-tabs" role="tablist" aria-label="Inventory views"></div>
+            <div id="resource-panel" role="tabpanel" aria-labelledby="view-all">
+                <form class="filters" id="filter-form">
+                    <div class="field search-field"><label for="filter-search">Search resources</label><input id="filter-search" type="search" placeholder="Name, ID, or tags" autocomplete="off"></div>
+                    <div class="field"><label for="filter-team">Team</label><input id="filter-team" type="text" placeholder="Any team"></div>
+                    <div class="field"><label for="filter-application">Application</label><input id="filter-application" type="text" placeholder="Any application"></div>
+                    <div class="field"><label for="filter-environment">Environment</label><input id="filter-environment" type="text" placeholder="Any environment"></div>
+                    <div class="field cost-field" id="cost-filter" hidden><label for="filter-min-cost">Minimum estimate / mo</label><input id="filter-min-cost" type="number" min="0" step="any" value="100" required></div>
+                    <button class="action-btn primary" type="submit">Apply filters</button>
+                    <button class="action-btn" id="clear-filters" type="button">Clear</button>
+                </form>
+                <div class="table-scroll">
+                    <table id="resource-table">
+                        <thead><tr><th scope="col">Resource</th><th scope="col">Owner / Team</th><th scope="col">Application</th><th scope="col">Environment</th><th scope="col">Purpose</th><th scope="col">Criticality</th><th scope="col" class="numeric">Est. cost / mo</th><th scope="col">Signals</th></tr></thead>
+                        <tbody id="resource-rows"><tr><td colspan="8" class="empty">Choose a tenant to load inventory.</td></tr></tbody>
+                    </table>
+                </div>
+                <div class="pagination">
+                    <span id="page-range" role="status" aria-live="polite">No inventory loaded</span>
+                    <div class="pagination-controls">
+                        <label for="page-size">Rows</label>
+                        <select id="page-size"><option value="25">25</option><option value="50" selected>50</option><option value="100">100</option></select>
+                        <button class="action-btn" id="page-prev" type="button" disabled>Previous</button>
+                        <span id="page-number">—</span>
+                        <button class="action-btn" id="page-next" type="button" disabled>Next</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <div class="secondary-grid">
+            <section class="panel" aria-labelledby="groups-title">
+                <div class="panel-heading"><div><h2 id="groups-title">Operational groups</h2><p class="description">Team × application × environment, across the entire tenant. Not limited by the table filters.</p></div></div>
+                <div class="group-scroll">
+                    <table id="groups-table"><thead><tr><th scope="col">Team</th><th scope="col">Application</th><th scope="col">Environment</th><th scope="col" class="numeric">Resources</th><th scope="col" class="numeric">Est. cost / mo</th></tr></thead><tbody id="group-rows"><tr><td colspan="5" class="empty">No summary loaded.</td></tr></tbody></table>
+                </div>
+                <p class="description" style="padding: 12px 16px;">Costs are API-provided monthly estimates, not billing totals. Missing costs are UNKNOWN; zero is displayed only when returned.</p>
+            </section>
+            <section class="panel" aria-labelledby="rules-title">
+                <div class="panel-heading"><div><h2 id="rules-title">Ownership &amp; classification rules</h2><p class="description">Match an exact provider tag and assign operational fields. Rule-derived answers retain their evidence.</p></div></div>
+                <div class="rule-layout">
+                    <form id="rule-form">
+                        <div class="field full-width"><label for="rule-name">Rule name *</label><input id="rule-name" name="name" type="text" required placeholder="Payments team classification"></div>
+                        <div class="field"><label for="rule-tag-key">Match tag key (tag:…) *</label><input id="rule-tag-key" name="tag_key" type="text" required placeholder="team" aria-describedby="tag-key-help"><span class="sub" id="tag-key-help">Enter the key only, e.g. team, not tag:team.</span></div>
+                        <div class="field"><label for="rule-tag-value">Equals tag value *</label><input id="rule-tag-value" name="tag_value" type="text" required placeholder="payments"></div>
+                        <div class="form-section full-width">Assign at least one field</div>
+                        <div class="field"><label for="rule-team">Team</label><input id="rule-team" name="team" type="text" placeholder="Payments"></div>
+                        <div class="field"><label for="rule-owner">Owner</label><input id="rule-owner" name="owner" type="text" placeholder="Owner or contact"></div>
+                        <div class="field"><label for="rule-application">Application</label><input id="rule-application" name="application" type="text" placeholder="Application name"></div>
+                        <div class="field"><label for="rule-environment">Environment</label><input id="rule-environment" name="environment" type="text" placeholder="production"></div>
+                        <div class="field"><label for="rule-purpose">Purpose</label><input id="rule-purpose" name="purpose" type="text" placeholder="Operational purpose"></div>
+                        <div class="field"><label for="rule-criticality">Criticality</label><input id="rule-criticality" name="criticality" type="text" placeholder="Criticality value"></div>
+                        <div class="field"><label for="rule-priority">Priority</label><input id="rule-priority" name="priority" type="number" value="100" step="1" required></div>
+                        <label class="check-field" for="rule-enabled"><input id="rule-enabled" name="enabled" type="checkbox" checked> Enabled</label>
+                        <div class="form-actions full-width"><span class="description">Example: tag:team = payments → Team Payments</span><button class="action-btn primary" id="create-rule" type="submit" disabled>Create rule</button></div>
+                    </form>
+                    <div class="notice" id="rule-message" role="status" aria-live="polite" hidden></div>
+                    <div class="rules-heading"><h3>Configured rules</h3><span id="rule-count" class="muted">—</span></div>
+                    <div id="rules-error" class="notice error" role="alert" hidden></div>
+                    <div id="rule-list"><p class="muted">Choose a tenant to load rules.</p></div>
+                </div>
+            </section>
+        </div>
+    </main>
+    <dialog id="inspector" aria-labelledby="inspector-title" aria-describedby="inspector-description">
+        <div class="drawer-heading">
+            <div><h2 id="inspector-title">Resource evidence</h2><p id="inspector-description" class="description"></p></div>
+            <button type="button" class="action-btn" id="close-inspector" autofocus>Close</button>
+        </div>
+        <div class="drawer-body" id="inspector-body"></div>
+    </dialog>
+    <script>
+        'use strict';
+
+        // Explorer uses an editable tenant-input and this development tenant ID.
+        // It currently defines no localStorage key; persistence is isolated here.
+        const TENANT_STORAGE_KEY = 'cradle_tenant_id';
+        const EXPLORER_DEFAULT_TENANT = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+        const API_ROOT = '/api/v1/inventory';
+        const VIEWS = [
+            ['', 'All resources'], ['production', 'Production'], ['staging', 'Staging'],
+            ['development', 'Development'], ['unowned', 'Unknown Ownership'],
+            ['orphaned', 'Orphaned'], ['critical', 'Critical'], ['high-cost', 'High Cost']
+        ];
+        const ANSWER_FIELDS = ['owner', 'team', 'application', 'environment', 'purpose', 'criticality'];
+        const state = {
+            tenant: '', tenants: [], epoch: 0, view: '', search: '', team: '', application: '',
+            environment: '', minCost: 100, limit: 50, offset: 0, total: null,
+            resources: [], summary: null, rules: [], listLoading: false, mutation: false
+        };
+        const requests = new Map();
+        const $ = id => document.getElementById(id);
+        const numberFormat = new Intl.NumberFormat(undefined);
+        const moneyFormat = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // All API-derived strings enter the DOM through textContent, never innerHTML.
+        function element(tag, className, text) {
+            const node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined) node.textContent = String(text);
+            return node;
+        }
+        function printable(value) {
+            if (value === null || value === undefined || value === '') return 'UNKNOWN';
+            return typeof value === 'object' ? JSON.stringify(value) : String(value);
+        }
+        function answerValue(answer) { return printable(answer && typeof answer === 'object' ? answer.value : null); }
+        function valueNode(value, className = '') {
+            const text = printable(value);
+            return element('span', text.toUpperCase() === 'UNKNOWN' ? 'unknown' : className, text);
+        }
+        function count(value) { return Number.isInteger(value) && value >= 0 ? numberFormat.format(value) : '—'; }
+        function money(value) { return typeof value === 'number' && Number.isFinite(value) ? '$' + moneyFormat.format(value) : 'UNKNOWN'; }
+        function confidence(value) {
+            return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1
+                ? Math.round(value * 100) + '%' : 'UNKNOWN';
+        }
+        function booleanText(value) { return value === true ? 'Yes' : value === false ? 'No' : 'UNKNOWN'; }
+        function message(id, text, kind = '') {
+            const node = $(id);
+            node.textContent = text || '';
+            node.className = 'notice' + (kind ? ' ' + kind : '');
+            node.hidden = !text;
+            node.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+        }
+        function tableMessage(id, columns, text, isError = false) {
+            const row = element('tr');
+            const cell = element('td', 'empty', text);
+            cell.colSpan = columns;
+            if (isError) cell.setAttribute('role', 'alert');
+            row.append(cell);
+            $(id).replaceChildren(row);
+        }
+        function readStoredTenant() {
+            try { return (localStorage.getItem(TENANT_STORAGE_KEY) || '').trim(); }
+            catch (_) { return ''; }
+        }
+        function storeTenant(value) {
+            try { localStorage.setItem(TENANT_STORAGE_KEY, value); }
+            catch (_) { /* Tenant selection still works when browser storage is unavailable. */ }
+        }
+        function beginRequest(channel) {
+            if (requests.has(channel)) requests.get(channel).abort();
+            const controller = new AbortController();
+            requests.set(channel, controller);
+            return { controller, epoch: state.epoch, tenant: state.tenant, channel };
+        }
+        function current(request) {
+            return request.epoch === state.epoch && requests.get(request.channel) === request.controller && !request.controller.signal.aborted;
+        }
+        function finishRequest(request) {
+            if (requests.get(request.channel) === request.controller) requests.delete(request.channel);
+        }
+        async function fetchAPI(url, { tenant = state.tenant, signal, method = 'GET', body } = {}) {
+            const headers = { 'Accept': 'application/json' };
+            if (tenant) headers['X-Tenant-ID'] = tenant;
+            if (body !== undefined) headers['Content-Type'] = 'application/json';
+            const response = await fetch(url, {
+                method, headers, signal, cache: 'no-store', credentials: 'same-origin',
+                body: body === undefined ? undefined : JSON.stringify(body)
+            });
+            const text = await response.text();
+            let data = null;
+            if (text.trim()) {
+                try { data = JSON.parse(text); }
+                catch (_) {
+                    if (response.ok && method === 'GET') throw new Error('The API returned invalid JSON.');
+                    // Mutation endpoints need only acknowledge success; their bodies are optional.
+                }
+            }
+            if (!response.ok) {
+                let detail = data && typeof data === 'object' ? data.error || data.message || data : text;
+                detail = typeof detail === 'object' ? JSON.stringify(detail, null, 2) : String(detail || response.statusText || 'Request failed');
+                if (data && data.errors) detail += '\n' + JSON.stringify(data.errors, null, 2);
+                throw new Error('HTTP ' + response.status + ': ' + detail);
+            }
+            return data;
+        }
+        function object(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
+        function abortError(error) { return error && error.name === 'AbortError'; }
+
+        function renderTabs() {
+            const nodes = VIEWS.map(([view, label]) => {
+                const button = element('button', 'tab' + (state.view === view ? ' active' : ''));
+                button.type = 'button';
+                button.id = 'view-' + (view || 'all');
+                button.dataset.view = view;
+                button.setAttribute('role', 'tab');
+                button.setAttribute('aria-controls', 'resource-panel');
+                button.setAttribute('aria-selected', String(state.view === view));
+                button.tabIndex = state.view === view ? 0 : -1;
+                const viewCount = state.summary ? (view ? state.summary.views?.[view] : state.summary.total) : null;
+                // The summary high-cost count uses the API default threshold, not a custom filter.
+                const customCost = view === 'high-cost' && state.minCost !== 100;
+                button.append(element('span', '', label), element('span', 'tab-count', customCost ? '—' : count(viewCount)));
+                if (customCost) button.title = 'Summary count is unavailable for a custom cost threshold.';
+                button.addEventListener('click', () => selectView(view));
+                return button;
+            });
+            const focusedView = document.activeElement?.dataset.view;
+            $('view-tabs').replaceChildren(...nodes);
+            $('resource-panel').setAttribute('aria-labelledby', 'view-' + (state.view || 'all'));
+            $('cost-filter').hidden = state.view !== 'high-cost';
+            $('filter-min-cost').disabled = state.view !== 'high-cost';
+            if (focusedView !== undefined) nodes.find(node => node.dataset.view === focusedView)?.focus();
+        }
+        function selectView(view) {
+            if (state.view === view) return;
+            state.view = view;
+            state.offset = 0;
+            closeInspector();
+            renderTabs();
+            loadResources();
+        }
+        $('view-tabs').addEventListener('keydown', event => {
+            const tabs = Array.from($('view-tabs').querySelectorAll('button'));
+            const index = tabs.indexOf(document.activeElement);
+            if (index < 0) return;
+            let next;
+            if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+            if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+            if (event.key === 'Home') next = 0;
+            if (event.key === 'End') next = tabs.length - 1;
+            if (next === undefined) return;
+            event.preventDefault();
+            selectView(tabs[next].dataset.view);
+            $('view-tabs').children[next].focus();
+        });
+
+        function updateControls() {
+            $('page-prev').disabled = state.listLoading || state.total === null || state.offset === 0 || !state.tenant;
+            $('page-next').disabled = state.listLoading || state.total === null || state.offset + state.limit >= state.total || !state.tenant;
+            $('create-rule').disabled = !state.tenant || state.mutation;
+            $('refresh-all').disabled = !state.tenant || state.mutation;
+            $('tenant-input').disabled = state.mutation;
+            $('tenant-select').disabled = state.mutation || state.tenants.length === 0;
+            $('apply-tenant').disabled = state.mutation;
+            $('retry-tenants').disabled = state.mutation;
+            $('create-rule').textContent = state.mutation ? 'Saving…' : 'Create rule';
+            $('rule-form').querySelectorAll('input').forEach(input => { input.disabled = state.mutation; });
+            $('rule-list').querySelectorAll('button').forEach(button => { button.disabled = state.mutation || !state.tenant; });
+        }
+        function renderPagination() {
+            if (state.listLoading) {
+                $('page-range').textContent = 'Loading resources…';
+                $('page-number').textContent = '—';
+            } else if (state.total === null) {
+                $('page-range').textContent = 'No inventory loaded';
+                $('page-number').textContent = '—';
+            } else {
+                const start = state.resources.length ? state.offset + 1 : 0;
+                const end = state.resources.length ? state.offset + state.resources.length : 0;
+                $('page-range').textContent = numberFormat.format(start) + '–' + numberFormat.format(end) + ' of ' + count(state.total) + ' resources';
+                $('page-number').textContent = state.total ? 'Page ' + (Math.floor(state.offset / state.limit) + 1) + ' / ' + Math.ceil(state.total / state.limit) : 'Page 0 / 0';
+            }
+            updateControls();
+        }
+        function resourceParams() {
+            const params = new URLSearchParams({ limit: String(state.limit), offset: String(state.offset), min_monthly_cost: String(state.minCost) });
+            for (const field of ['view', 'search', 'team', 'application', 'environment']) {
+                if (state[field]) params.set(field, state[field]);
+            }
+            return params;
+        }
+        function badge(text, color = '') { return element('span', 'badge' + (color ? ' badge-' + color : ''), text); }
+        function renderResources() {
+            if (!state.resources.length) {
+                const filtered = ['view', 'search', 'team', 'application', 'environment'].some(field => state[field]);
+                tableMessage('resource-rows', 8, filtered
+                    ? 'No resources match this view and these filters. Try All resources or clear the filters.'
+                    : 'This tenant has no inventory resources. Run a cloud discovery sync, then refresh.');
+                return;
+            }
+            const rows = state.resources.map(resource => {
+                const row = element('tr');
+                const operational = object(resource.operational) ? resource.operational : {};
+                const identity = element('td');
+                const link = element('button', 'resource-link', resource.name || resource.native_id || resource.id || 'UNKNOWN');
+                link.type = 'button';
+                link.addEventListener('click', () => openInspector(resource));
+                identity.append(link, element('div', 'sub mono', printable(resource.native_id)), element('div', 'sub', printable(resource.resource_type) + ' · ' + printable(resource.region)));
+                row.append(identity);
+                const ownership = element('td');
+                ownership.append(valueNode(answerValue(operational.owner)), element('div', 'sub', 'Team: ' + answerValue(operational.team)));
+                row.append(ownership);
+                for (const field of ['application', 'environment', 'purpose', 'criticality']) {
+                    const cell = element('td');
+                    cell.append(valueNode(answerValue(operational[field])));
+                    row.append(cell);
+                }
+                const cost = element('td', 'numeric');
+                cost.append(valueNode(money(resource.monthly_cost_estimate)));
+                row.append(cost);
+                const signals = element('td');
+                if (operational.missing_owner === true) signals.append(badge('Unknown ownership', 'amber'));
+                if (operational.untagged === true) signals.append(badge('Untagged', 'amber'));
+                const orphanValue = operational.orphan?.value;
+                if (orphanValue === 'ORPHANED') signals.append(badge('ORPHANED', 'red'));
+                else if (orphanValue === 'NOT_ORPHANED') signals.append(badge('NOT_ORPHANED', 'green'));
+                else signals.append(badge('Orphan: UNKNOWN'));
+                const analysis = operational.tag_analysis;
+                if (analysis && ['empty_keys', 'missing_fields', 'conflicting_fields'].some(field => Array.isArray(analysis[field]) && analysis[field].length)) {
+                    signals.append(badge('Tag issues', 'purple'));
+                }
+                row.append(signals);
+                return row;
+            });
+            $('resource-rows').replaceChildren(...rows);
+        }
+        async function loadResources() {
+            if (!state.tenant) return false;
+            const request = beginRequest('resources');
+            const requestedOffset = state.offset;
+            state.listLoading = true;
+            $('resource-panel').setAttribute('aria-busy', 'true');
+            $('list-status').textContent = 'Loading…';
+            tableMessage('resource-rows', 8, 'Loading inventory…');
+            renderPagination();
+            try {
+                const data = await fetchAPI(API_ROOT + '/resources?' + resourceParams(), { tenant: request.tenant, signal: request.controller.signal });
+                if (!current(request)) return false;
+                if (!object(data) || !Number.isInteger(data.total) || data.total < 0 || !Number.isInteger(data.limit) || data.limit <= 0 || !Number.isInteger(data.offset) || data.offset < 0 || data.offset !== requestedOffset || !(Array.isArray(data.resources) || data.resources === null && data.total === 0)) {
+                    throw new Error('Unexpected inventory response; expected total, limit, offset, and resources.');
+                }
+                const resources = data.resources || [];
+                if ((data.total > 0 && data.offset >= data.total) || (data.total === 0 && data.offset !== 0)) {
+                    if (resources.length) throw new Error('The inventory response contains resources outside the reported total.');
+                    state.limit = data.limit;
+                    state.offset = data.total ? Math.floor((data.total - 1) / data.limit) * data.limit : 0;
+                    return await loadResources();
+                }
+                if (resources.some(resource => !object(resource)) || resources.length > data.limit || data.offset + resources.length > data.total || !resources.length && data.total > data.offset) {
+                    throw new Error('The inventory response contains inconsistent resource or pagination data.');
+                }
+                state.total = data.total;
+                state.limit = data.limit;
+                state.offset = data.offset;
+                state.resources = resources;
+                renderResources();
+                $('list-status').textContent = count(data.total) + ' matching';
+                return true;
+            } catch (error) {
+                if (!current(request) || abortError(error)) return false;
+                state.resources = [];
+                state.total = null;
+                tableMessage('resource-rows', 8, 'Unable to load inventory. ' + error.message + '\nCheck the tenant, database connection, and inventory API, then use Refresh.', true);
+                $('list-status').textContent = 'Unavailable';
+                return false;
+            } finally {
+                if (current(request)) {
+                    state.listLoading = false;
+                    $('resource-panel').setAttribute('aria-busy', 'false');
+                    renderPagination();
+                    finishRequest(request);
+                }
+            }
+        }
+
+        function renderSummary() {
+            $('stat-total').textContent = count(state.summary?.total);
+            $('stat-unowned').textContent = count(state.summary?.unknown_ownership);
+            $('stat-untagged').textContent = count(state.summary?.untagged);
+            renderTabs();
+            if (!state.summary) {
+                tableMessage('group-rows', 5, 'Summary unavailable. Use Refresh to retry.');
+                return;
+            }
+            const groups = state.summary.groups || [];
+            if (!groups.length) {
+                tableMessage('group-rows', 5, 'No operational groups were returned.');
+                return;
+            }
+            $('group-rows').replaceChildren(...groups.map(group => {
+                const row = element('tr');
+                for (const field of ['team', 'application', 'environment']) {
+                    const cell = element('td');
+                    cell.append(valueNode(group[field]));
+                    row.append(cell);
+                }
+                row.append(element('td', 'numeric', count(group.resource_count)), element('td', 'numeric', money(group.monthly_cost_estimate)));
+                return row;
+            }));
+        }
+        async function loadSummary() {
+            if (!state.tenant) return false;
+            const request = beginRequest('summary');
+            state.summary = null;
+            renderSummary();
+            tableMessage('group-rows', 5, 'Loading operational groups…');
+            $('summary-stats').setAttribute('aria-busy', 'true');
+            message('summary-error', '');
+            try {
+                const data = await fetchAPI(API_ROOT + '/summary', { tenant: request.tenant, signal: request.controller.signal });
+                if (!current(request)) return false;
+                if (!object(data) || !Number.isInteger(data.total) || data.total < 0 || !object(data.views) || !(Array.isArray(data.groups) || data.groups === null) || (data.groups || []).some(group => !object(group))) {
+                    throw new Error('Unexpected inventory summary response.');
+                }
+                state.summary = data;
+                renderSummary();
+                return true;
+            } catch (error) {
+                if (!current(request) || abortError(error)) return false;
+                state.summary = null;
+                renderSummary();
+                message('summary-error', 'Summary unavailable. ' + error.message + '\nResource results may still be available. Use Refresh to retry.', 'error');
+                return false;
+            } finally {
+                if (current(request)) {
+                    $('summary-stats').setAttribute('aria-busy', 'false');
+                    finishRequest(request);
+                }
+            }
+        }
+
+        function renderRules() {
+            $('rule-count').textContent = count(state.rules.length);
+            if (!state.rules.length) {
+                $('rule-list').replaceChildren(element('p', 'muted', 'No classification rules. Add a tag-matching rule above.'));
+                return;
+            }
+            $('rule-list').replaceChildren(...state.rules.map(rule => {
+                const card = element('article', 'rule-card');
+                const heading = element('div', 'rule-card-header');
+                const title = element('div');
+                title.append(element('h3', '', printable(rule.name)), element('div', 'sub', 'Priority: ' + printable(rule.priority) + ' · Enabled: ' + booleanText(rule.enabled)));
+                heading.append(title);
+                if (rule.id !== undefined && rule.id !== null && rule.id !== '') {
+                    const remove = element('button', 'action-btn danger', 'Remove');
+                    remove.type = 'button';
+                    remove.setAttribute('aria-label', 'Remove rule ' + printable(rule.name));
+                    remove.addEventListener('click', () => removeRule(rule));
+                    heading.append(remove);
+                }
+                const assignments = element('div', 'assignments');
+                const values = object(rule.assignments) ? rule.assignments : {};
+                for (const field of ANSWER_FIELDS) {
+                    if (values[field] !== undefined && values[field] !== null && values[field] !== '') assignments.append(element('span', '', field + ': ' + printable(values[field])));
+                }
+                if (!assignments.childNodes.length) assignments.append(element('span', '', 'Assignments: UNKNOWN'));
+                card.append(heading, element('div', 'rule-matcher mono', 'tag:' + printable(rule.tag_key) + ' = ' + printable(rule.tag_value)), assignments);
+                return card;
+            }));
+            updateControls();
+        }
+        async function loadRules() {
+            if (!state.tenant) return false;
+            const request = beginRequest('rules');
+            $('rule-list').setAttribute('aria-busy', 'true');
+            $('rule-list').replaceChildren(element('p', 'muted', 'Loading rules…'));
+            $('rule-count').textContent = '—';
+            message('rules-error', '');
+            try {
+                const data = await fetchAPI(API_ROOT + '/rules', { tenant: request.tenant, signal: request.controller.signal });
+                if (!current(request)) return false;
+                if (!object(data) || !(Array.isArray(data.rules) || data.rules === null) || (data.rules || []).some(rule => !object(rule))) throw new Error('Unexpected rule list response.');
+                state.rules = data.rules || [];
+                renderRules();
+                return true;
+            } catch (error) {
+                if (!current(request) || abortError(error)) return false;
+                state.rules = [];
+                $('rule-list').replaceChildren();
+                message('rules-error', 'Unable to load rules. ' + error.message + '\nUse Refresh to retry.', 'error');
+                return false;
+            } finally {
+                if (current(request)) {
+                    $('rule-list').setAttribute('aria-busy', 'false');
+                    finishRequest(request);
+                }
+            }
+        }
+        async function refreshAll() {
+            if (!state.tenant) return [];
+            closeInspector();
+            return Promise.all([loadResources(), loadSummary(), loadRules()]);
+        }
+        async function mutateRule(url, method, body, successText) {
+            if (!state.tenant || state.mutation) return;
+            state.mutation = true;
+            updateControls();
+            message('rule-message', method === 'POST' ? 'Creating rule…' : 'Removing rule…');
+            try {
+                await fetchAPI(url, { method, body, tenant: state.tenant });
+                if (method === 'POST') $('rule-form').reset();
+                message('rule-message', successText + ' Refreshing inventory, summary, and rules…', 'success');
+                const results = await refreshAll();
+                message('rule-message', successText + (results.every(Boolean) ? ' Inventory, summary, and rules refreshed.' : ' Some refreshes failed; see the affected panels and use Refresh to retry.'), results.every(Boolean) ? 'success' : '');
+            } catch (error) {
+                message('rule-message', (method === 'POST' ? 'Could not confirm rule creation. ' : 'Could not confirm rule removal. ') + error.message + '\nRefresh rules before retrying if the request outcome is uncertain.', 'error');
+            } finally {
+                state.mutation = false;
+                updateControls();
+            }
+        }
+        $('rule-form').addEventListener('submit', event => {
+            event.preventDefault();
+            if (state.mutation) return;
+            if (!state.tenant) { message('rule-message', 'Choose a tenant before creating a rule.', 'error'); return; }
+            if (!$('rule-form').reportValidity()) return;
+            const assignments = {};
+            for (const field of ANSWER_FIELDS) {
+                const value = $('rule-' + field).value.trim();
+                if (value) assignments[field] = value;
+            }
+            const name = $('rule-name').value.trim();
+            const tagKey = $('rule-tag-key').value.trim();
+            const tagValue = $('rule-tag-value').value.trim();
+            const priority = Number($('rule-priority').value);
+            if (!name || !tagKey || !tagValue) { message('rule-message', 'Rule name, tag key, and tag value must not be blank.', 'error'); return; }
+            if (!Object.keys(assignments).length) { message('rule-message', 'Assign at least one nonempty operational field (for example, Team Payments).', 'error'); return; }
+            if (!Number.isSafeInteger(priority)) { message('rule-message', 'Priority must be a valid integer.', 'error'); return; }
+            mutateRule(API_ROOT + '/rules', 'POST', { name, tag_key: tagKey, tag_value: tagValue, priority, enabled: $('rule-enabled').checked, assignments }, 'Rule created.');
+        });
+        function removeRule(rule) {
+            if (state.mutation || !state.tenant) return;
+            if (!window.confirm('Remove rule “' + printable(rule.name) + '” from this tenant? Operational classifications will be refreshed.')) return;
+            mutateRule(API_ROOT + '/rules/' + encodeURIComponent(String(rule.id)), 'DELETE', undefined, 'Rule removed.');
+        }
+
+        function section(title) {
+            const card = element('section', 'section-card');
+            card.append(element('h3', 'section-title', title));
+            return card;
+        }
+        function kv(card, key, value) {
+            const row = element('div', 'kv-row');
+            row.append(element('span', 'kv-key', key), valueNode(value));
+            card.append(row);
+        }
+        function evidenceDetails(card, label, values) {
+            const disclosure = element('details');
+            const list = Array.isArray(values) ? values : null;
+            disclosure.append(element('summary', '', label + (list ? ' (' + list.length + ')' : ' (UNKNOWN)')));
+            disclosure.append(element('pre', 'json-view mono', list ? (list.length ? JSON.stringify(list, null, 2) : 'No ' + label.toLowerCase() + ' reported.') : 'UNKNOWN — not supplied by the API.'));
+            card.append(disclosure);
+        }
+        function answerSection(field, answer) {
+            const card = element('section', 'section-card');
+            const data = object(answer) ? answer : {};
+            const heading = element('div', 'answer-header');
+            heading.append(element('h3', 'section-title', field), element('span', 'answer-value', answerValue(data)));
+            const source = printable(data.source);
+            let color = '';
+            if (source.includes('TAG')) color = 'purple';
+            else if (source.includes('INFERRED')) color = 'amber';
+            else if (source.includes('OBSERVED')) color = 'green';
+            const provenance = element('div', 'provenance');
+            provenance.append(badge('Source: ' + source, color), badge('Confidence: ' + confidence(data.confidence)));
+            card.append(heading, provenance);
+            evidenceDetails(card, 'Evidence', data.evidence);
+            if (field !== 'orphan') evidenceDetails(card, 'Candidates', data.candidates);
+            return card;
+        }
+        function openInspector(resource) {
+            const operational = object(resource.operational) ? resource.operational : {};
+            $('inspector-title').textContent = resource.name || resource.native_id || resource.id || 'UNKNOWN';
+            $('inspector-description').textContent = printable(resource.resource_type) + ' · ' + printable(resource.region) + ' · Answers from the inventory API; not assumptions.';
+            const identity = section('Resource identity');
+            for (const [label, field] of [['Resource ID', 'id'], ['Native ID', 'native_id'], ['ARN / URI', 'arn'], ['Provider', 'provider'], ['Account', 'account_id'], ['Region', 'region'], ['Status', 'status']]) kv(identity, label, resource[field]);
+            kv(identity, 'Est. cost / mo', money(resource.monthly_cost_estimate));
+            const observed = resource.observed_at ? new Date(resource.observed_at) : null;
+            kv(identity, 'Observed at', observed && !Number.isNaN(observed.getTime()) ? observed.toLocaleString() : null);
+            const signals = section('Operational signals');
+            kv(signals, 'Missing owner', booleanText(operational.missing_owner));
+            kv(signals, 'Untagged', booleanText(operational.untagged));
+            const answers = ANSWER_FIELDS.map(field => answerSection(field, operational[field]));
+            const orphan = answerSection('orphan', operational.orphan);
+            const issues = section('Tag analysis & issues');
+            const analysis = object(operational.tag_analysis) ? operational.tag_analysis : {};
+            kv(issues, 'User tag count', Number.isInteger(analysis.user_tag_count) && analysis.user_tag_count >= 0 ? analysis.user_tag_count : null);
+            for (const [label, field] of [['Empty tag keys', 'empty_keys'], ['Missing fields', 'missing_fields'], ['Conflicting fields', 'conflicting_fields']]) {
+                evidenceDetails(issues, label, analysis[field]);
+            }
+            const tags = section('Provider tags');
+            if (object(resource.tags)) {
+                const entries = Object.entries(resource.tags);
+                if (entries.length) for (const [key, value] of entries) kv(tags, key === '' ? '(empty key)' : key, value === '' ? '(empty value)' : value);
+                else tags.append(element('p', 'muted', 'No provider tags returned.'));
+            } else tags.append(element('p', 'unknown', 'UNKNOWN — provider tags were not supplied.'));
+            $('inspector-body').replaceChildren(identity, signals, ...answers, orphan, issues, tags);
+            if (!$('inspector').open) $('inspector').showModal();
+            $('inspector').scrollTop = 0;
+        }
+        function closeInspector() { if ($('inspector').open) $('inspector').close(); }
+        $('close-inspector').addEventListener('click', closeInspector);
+        $('inspector').addEventListener('click', event => {
+            if (event.target !== $('inspector')) return;
+            const bounds = $('inspector').getBoundingClientRect();
+            if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) closeInspector();
+        });
+
+        $('filter-form').addEventListener('submit', event => {
+            event.preventDefault();
+            if (!$('filter-form').reportValidity()) return;
+            for (const field of ['search', 'team', 'application', 'environment']) state[field] = $('filter-' + field).value.trim();
+            if (state.view === 'high-cost') state.minCost = Number($('filter-min-cost').value);
+            state.offset = 0;
+            closeInspector();
+            renderTabs();
+            loadResources();
+        });
+        $('clear-filters').addEventListener('click', () => {
+            $('filter-form').reset();
+            for (const field of ['search', 'team', 'application', 'environment']) state[field] = '';
+            state.minCost = 100;
+            state.offset = 0;
+            closeInspector();
+            renderTabs();
+            loadResources();
+        });
+        $('page-size').addEventListener('change', () => {
+            state.limit = Number($('page-size').value);
+            state.offset = 0;
+            closeInspector();
+            loadResources();
+        });
+        $('page-prev').addEventListener('click', () => { state.offset = Math.max(0, state.offset - state.limit); closeInspector(); loadResources(); });
+        $('page-next').addEventListener('click', () => { state.offset += state.limit; closeInspector(); loadResources(); });
+        $('refresh-all').addEventListener('click', refreshAll);
+
+        function syncTenantSelect() {
+            $('tenant-select').value = state.tenants.some(tenant => tenant.id === $('tenant-input').value.trim()) ? $('tenant-input').value.trim() : '';
+        }
+        function activateTenant(value) {
+            if (state.mutation) return;
+            value = value.trim();
+            if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+                message('tenant-message', 'Enter a valid tenant UUID or choose a registered tenant. The active tenant has not changed.', 'error');
+                return;
+            }
+            for (const [channel, controller] of requests) if (channel !== 'tenants') controller.abort();
+            for (const channel of ['resources', 'summary', 'rules']) requests.delete(channel);
+            state.epoch++;
+            state.tenant = value;
+            state.offset = 0;
+            state.total = null;
+            state.resources = [];
+            state.rules = [];
+            state.summary = null;
+            $('tenant-input').value = value;
+            storeTenant(value);
+            syncTenantSelect();
+            const selected = state.tenants.find(tenant => tenant.id === value);
+            $('active-tenant').textContent = 'Active tenant: ' + (selected ? printable(selected.name) + ' · ' : '') + value;
+            message('tenant-message', '');
+            message('rule-message', '');
+            updateControls();
+            refreshAll();
+        }
+        $('tenant-form').addEventListener('submit', event => { event.preventDefault(); activateTenant($('tenant-input').value); });
+        $('tenant-select').addEventListener('change', () => {
+            if ($('tenant-select').value) activateTenant($('tenant-select').value);
+        });
+        $('tenant-input').addEventListener('input', syncTenantSelect);
+        async function loadTenants() {
+            const request = beginRequest('tenants');
+            $('retry-tenants').hidden = true;
+            try {
+                const data = await fetchAPI('/api/v1/tenants', { tenant: '', signal: request.controller.signal });
+                // Tenant requests are independent of an active inventory epoch.
+                if (requests.get('tenants') !== request.controller || request.controller.signal.aborted) return;
+                if (!object(data) || !Array.isArray(data.tenants) || data.tenants.some(tenant => !object(tenant) || typeof tenant.id !== 'string')) throw new Error('Unexpected tenant response; expected {total, tenants:[{id, name, …}]}.');
+                state.tenants = data.tenants;
+                const options = [element('option', '', 'Enter tenant ID…')];
+                options[0].value = '';
+                for (const tenant of state.tenants) {
+                    const option = element('option', '', printable(tenant.name) + ' · ' + tenant.id.slice(0, 8));
+                    option.value = tenant.id;
+                    options.push(option);
+                }
+                $('tenant-select').replaceChildren(...options);
+                updateControls();
+                if (state.tenant) { syncTenantSelect(); message('tenant-message', ''); return; }
+                const saved = readStoredTenant();
+                const selected = saved || (state.tenants.find(tenant => tenant.id === EXPLORER_DEFAULT_TENANT) || state.tenants[0])?.id;
+                if (selected) activateTenant(selected);
+                else message('tenant-message', 'No tenants were returned. Register a tenant via /api/v1/tenants, or enter an existing tenant ID and Apply. No inventory has been assumed.');
+            } catch (error) {
+                if (requests.get('tenants') !== request.controller || abortError(error)) return;
+                if (!state.tenants.length) {
+                    const option = element('option', '', 'Tenant list unavailable');
+                    option.value = '';
+                    $('tenant-select').replaceChildren(option);
+                }
+                $('retry-tenants').hidden = false;
+                const saved = readStoredTenant();
+                if (!state.tenant && saved) activateTenant(saved);
+                message('tenant-message', 'Unable to load tenants. ' + error.message + '\nCheck the database connection or enter a tenant ID and Apply. Retry tenants to reload the list.', 'error');
+                updateControls();
+            } finally {
+                finishRequest(request);
+            }
+        }
+        $('retry-tenants').addEventListener('click', loadTenants);
+        $('tenant-input').value = readStoredTenant() || EXPLORER_DEFAULT_TENANT;
+        renderTabs();
+        updateControls();
+        loadTenants();
+    </script>
+</body>
+</html>

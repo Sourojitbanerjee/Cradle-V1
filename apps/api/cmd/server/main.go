@@ -132,6 +132,8 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 	explorerHandler := handlers.NewExplorerHandler(pool, AppVersion)
 	r.Get("/", healthHandler.Root)
 	r.Get("/explorer", explorerHandler.ServeHTTP)
+	inventoryHandler := handlers.NewInventoryHandler(pool)
+	r.Get("/inventory", inventoryHandler.Page)
 	r.Get("/healthz", healthHandler.Liveness)
 	r.Get("/readyz", healthHandler.Readiness)
 
@@ -174,6 +176,16 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 				res.Get("/{id}", resourceHandler.GetResource)
 				res.Get("/{id}/graph", resourceHandler.GetResourceGraph)
 				res.Get("/{id}/dependencies", resourceHandler.GetResourceGraph)
+			})
+
+			authed.Route("/inventory", func(inv chi.Router) {
+				inv.Get("/resources", inventoryHandler.ListResources)
+				inv.Get("/resources/{id}", inventoryHandler.GetResource)
+				inv.Get("/summary", inventoryHandler.GetSummary)
+				inv.Get("/rules", inventoryHandler.ListRules)
+				inv.Post("/rules", inventoryHandler.SaveRule)
+				inv.Put("/rules/{id}", inventoryHandler.SaveRule)
+				inv.Delete("/rules/{id}", inventoryHandler.DeleteRule)
 			})
 
 			// Graph Topology & Statistics
