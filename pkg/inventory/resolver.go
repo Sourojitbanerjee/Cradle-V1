@@ -192,10 +192,11 @@ func detectOrphan(resource domain.ResourceEntity) domain.InventoryAnswer {
 	orphaned, known := false, false
 	switch resource.ResourceType {
 	case "aws:ec2:volume":
-		if resource.Status == domain.ResourceStatusAvailable {
+		switch resource.Status {
+case domain.ResourceStatusAvailable:
 			orphaned, known = true, true
 			answer.Evidence = []string{"Provider volume status is available (unattached); review retention intent before acting."}
-		} else if resource.Status == domain.ResourceStatusInUse {
+		case domain.ResourceStatusInUse:
 			known = true
 			answer.Evidence = []string{"Provider volume status is in_use (attached)."}
 		}
