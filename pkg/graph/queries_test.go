@@ -54,3 +54,39 @@ func TestBlastRadiusNilPool(t *testing.T) {
 		t.Error("expected nil results from nil pool")
 	}
 }
+
+func TestGetDependenciesNilPool(t *testing.T) {
+	engine := NewQueryEngine(nil)
+
+	res, err := engine.GetDependencies(context.Background(), uuid.New(), uuid.New(), DirectionBoth, 3)
+	if err == nil {
+		t.Fatal("expected error with nil pool")
+	}
+	if res != nil {
+		t.Error("expected nil result with nil pool")
+	}
+}
+
+func TestGetResourceNilPool(t *testing.T) {
+	engine := NewQueryEngine(nil)
+
+	res, err := engine.GetResource(context.Background(), uuid.New(), uuid.New())
+	if err == nil {
+		t.Fatal("expected error with nil pool")
+	}
+	if res != nil {
+		t.Error("expected nil resource with nil pool")
+	}
+}
+
+func TestGetGraphStatsNilPool(t *testing.T) {
+	engine := NewQueryEngine(nil)
+
+	stats, err := engine.GetGraphStats(context.Background(), uuid.New())
+	if err == nil {
+		t.Fatal("expected error with nil pool")
+	}
+	if stats != nil {
+		t.Error("expected nil stats with nil pool")
+	}
+}

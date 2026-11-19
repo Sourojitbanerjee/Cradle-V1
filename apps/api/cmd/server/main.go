@@ -127,9 +127,11 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 	r.Use(appMiddleware.RequestLogger(logger))
 	r.Use(middleware.Recoverer)
 
-	// Root & Health Endpoints
+	// Root, Explorer & Health Endpoints
 	healthHandler := handlers.NewHealthHandler(pool, AppVersion)
+	explorerHandler := handlers.NewExplorerHandler(pool, AppVersion)
 	r.Get("/", healthHandler.Root)
+	r.Get("/explorer", explorerHandler.ServeHTTP)
 	r.Get("/healthz", healthHandler.Liveness)
 	r.Get("/readyz", healthHandler.Readiness)
 
@@ -169,8 +171,13 @@ func setupRouter(pool *pgxpool.Pool, logger *slog.Logger, cradleAWSAccount strin
 			// Canonical Resources & Dependency Graph
 			authed.Route("/resources", func(res chi.Router) {
 				res.Get("/", resourceHandler.ListResources)
+				res.Get("/{id}", resourceHandler.GetResource)
 				res.Get("/{id}/graph", resourceHandler.GetResourceGraph)
+				res.Get("/{id}/dependencies", resourceHandler.GetResourceGraph)
 			})
+
+			// Graph Topology & Statistics
+			authed.Get("/graph/stats", resourceHandler.GetGraphStats)
 
 			// Discovery Job History
 			authed.Get("/discovery/jobs", jobsHandler.ListDiscoveryJobs)

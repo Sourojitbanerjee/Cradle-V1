@@ -371,9 +371,20 @@ func TestDatabaseIntegrationLifecycle(t *testing.T) {
 		t.Errorf("expected 2 discovered resources in DB, got %d", resListResp.Total)
 	}
 
-	// 7. Verify Graph Blast Radius (Two-Phase Resolution Verified!)
+	// 7. Verify Graph Blast Radius & Resource Lookup (Two-Phase Resolution Verified!)
 	if len(resListResp.Resources) > 0 {
 		firstResID := resListResp.Resources[0].ID
+
+		// Get individual resource
+		reqSingle := httptest.NewRequest(http.MethodGet, "/api/v1/resources/"+firstResID.String(), nil)
+		reqSingle.Header.Set("X-Tenant-ID", testTenantID.String())
+		rrSingle := httptest.NewRecorder()
+		router.ServeHTTP(rrSingle, reqSingle)
+		if rrSingle.Code != http.StatusOK {
+			t.Fatalf("expected status 200 for single resource, got %d: %s", rrSingle.Code, rrSingle.Body.String())
+		}
+
+		// Direction: both
 		reqGraph := httptest.NewRequest(http.MethodGet, "/api/v1/resources/"+firstResID.String()+"/graph?depth=2", nil)
 		reqGraph.Header.Set("X-Tenant-ID", testTenantID.String())
 		rrGraph := httptest.NewRecorder()
@@ -382,9 +393,46 @@ func TestDatabaseIntegrationLifecycle(t *testing.T) {
 		if rrGraph.Code != http.StatusOK {
 			t.Fatalf("expected status 200 for resource graph, got %d: %s", rrGraph.Code, rrGraph.Body.String())
 		}
+
+		// Direction: upstream & downstream navigation
+		reqUpstream := httptest.NewRequest(http.MethodGet, "/api/v1/resources/"+firstResID.String()+"/graph?direction=upstream&depth=2", nil)
+		reqUpstream.Header.Set("X-Tenant-ID", testTenantID.String())
+		rrUpstream := httptest.NewRecorder()
+		router.ServeHTTP(rrUpstream, reqUpstream)
+		if rrUpstream.Code != http.StatusOK {
+			t.Fatalf("expected status 200 for upstream graph, got %d", rrUpstream.Code)
+		}
+
+		reqDownstream := httptest.NewRequest(http.MethodGet, "/api/v1/resources/"+firstResID.String()+"/graph?direction=downstream&depth=2", nil)
+		reqDownstream.Header.Set("X-Tenant-ID", testTenantID.String())
+		rrDownstream := httptest.NewRecorder()
+		router.ServeHTTP(rrDownstream, reqDownstream)
+		if rrDownstream.Code != http.StatusOK {
+			t.Fatalf("expected status 200 for downstream graph, got %d", rrDownstream.Code)
+		}
 	}
 
-	// 8. Cost & Waste Analysis
+	// 8. Graph Stats
+	reqStats := httptest.NewRequest(http.MethodGet, "/api/v1/graph/stats", nil)
+	reqStats.Header.Set("X-Tenant-ID", testTenantID.String())
+	rrStats := httptest.NewRecorder()
+	router.ServeHTTP(rrStats, reqStats)
+	if rrStats.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for graph stats, got %d: %s", rrStats.Code, rrStats.Body.String())
+	}
+
+	// 9. Visual Explorer UI
+	reqExplorer := httptest.NewRequest(http.MethodGet, "/explorer", nil)
+	rrExplorer := httptest.NewRecorder()
+	router.ServeHTTP(rrExplorer, reqExplorer)
+	if rrExplorer.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for /explorer, got %d", rrExplorer.Code)
+	}
+	if !strings.Contains(rrExplorer.Body.String(), "Cradle &mdash; Infrastructure Dependency Explorer") {
+		t.Errorf("expected explorer page content in /explorer response")
+	}
+
+	// 10. Cost & Waste Analysis
 	reqAnalyze := httptest.NewRequest(http.MethodPost, "/api/v1/waste/analyze", nil)
 	reqAnalyze.Header.Set("X-Tenant-ID", testTenantID.String())
 	rrAnalyze := httptest.NewRecorder()

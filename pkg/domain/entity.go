@@ -20,8 +20,11 @@ const (
 	// ProvenanceObserved represents direct, verifiable facts received from the cloud provider API.
 	ProvenanceObserved ProvenanceCategory = "OBSERVED_FROM_PROVIDER"
 
+	// ProvenanceObservedTag represents facts declared directly via provider resource tags.
+	ProvenanceObservedTag ProvenanceCategory = "OBSERVED_FROM_TAG"
+
 	// ProvenanceDerived represents deterministic facts calculated by Cradle logic
-	// (e.g., canonical resource hashing, standard state normalization).
+	// (e.g., canonical resource hashing, standard state normalization, cross-resource config joins).
 	ProvenanceDerived ProvenanceCategory = "DERIVED_BY_CRADLE"
 
 	// ProvenanceInferred represents heuristic or statistical interpretations

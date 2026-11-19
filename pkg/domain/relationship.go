@@ -32,8 +32,11 @@ const (
 	// Generic dependency
 	RelDependsOn RelationshipType = "DEPENDS_ON"
 
-	// Orchestration/Management (e.g., AutoScalingGroup manages EC2 Instance)
+	// Orchestration/Management (e.g., AutoScalingGroup manages EC2 Instance, EKS NodeGroup manages EC2 Instance)
 	RelManages RelationshipType = "MANAGES"
+
+	// Traffic distribution / targeting (e.g., TargetGroup targets EC2 Instance or ECS Task)
+	RelTargets RelationshipType = "TARGETS"
 )
 
 // ResourceRelationship represents a directed edge in the infrastructure dependency graph.
@@ -47,6 +50,8 @@ type ResourceRelationship struct {
 	RelationshipType RelationshipType       `json:"relationship_type"`
 	Properties       map[string]interface{} `json:"properties"`
 	IsImplicit       bool                   `json:"is_implicit"` // True if inferred/synthesized by graph analysis
+	Confidence       float64                `json:"confidence"`  // Epistemic certainty (0.00 to 1.00)
+	Provenance       ProvenanceCategory     `json:"provenance"`  // Provenance categorization
 	DiscoveredAt     time.Time              `json:"discovered_at"`
 	UpdatedAt        time.Time              `json:"updated_at"`
 }
@@ -67,6 +72,9 @@ func (rel *ResourceRelationship) Validate() error {
 	}
 	if rel.RelationshipType == "" {
 		return errors.New("relationship type is required")
+	}
+	if rel.Confidence < 0.0 || rel.Confidence > 1.0 {
+		return errors.New("confidence must be between 0.0 and 1.0")
 	}
 	return nil
 }

@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/cradle-dev/cradle/pkg/domain"
 	"github.com/cradle-dev/cradle/pkg/graph"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -70,7 +72,41 @@ func (h *ResourceHandler) ListResources(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(result)
 }
 
-// GetResourceGraph returns the blast radius / dependency subgraph around a resource.
+// GetResource returns a single canonical resource by its UUID.
+func (h *ResourceHandler) GetResource(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	tc, err := domain.TenantFromContext(r.Context())
+	if err != nil {
+		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	resourceIDStr := chi.URLParam(r, "id")
+	resourceID, err := uuid.Parse(resourceIDStr)
+	if err != nil {
+		http.Error(w, `{"error": "invalid resource ID format"}`, http.StatusBadRequest)
+		return
+	}
+
+	res, err := h.queryEngine.GetResource(r.Context(), tc.TenantID, resourceID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			http.Error(w, `{"error": "resource not found"}`, http.StatusNotFound)
+			return
+		}
+		http.Error(w, `{"error": "failed to retrieve resource"}`, http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(res)
+}
+
+// GetResourceGraph returns the dependency subgraph around a resource with upstream/downstream navigation.
 func (h *ResourceHandler) GetResourceGraph(w http.ResponseWriter, r *http.Request) {
 	if h.pool == nil {
 		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
@@ -91,24 +127,55 @@ func (h *ResourceHandler) GetResourceGraph(w http.ResponseWriter, r *http.Reques
 	}
 
 	depth := parseInt(r.URL.Query().Get("depth"), 3)
+	if depth < 1 {
+		depth = 1
+	}
+	if depth > 10 {
+		depth = 10
+	}
 
-	entities, rels, err := h.queryEngine.GetBlastRadius(r.Context(), tc.TenantID, resourceID, depth)
+	dirStr := r.URL.Query().Get("direction")
+	var dir graph.Direction
+	switch dirStr {
+	case "upstream":
+		dir = graph.DirectionUpstream
+	case "downstream":
+		dir = graph.DirectionDownstream
+	default:
+		dir = graph.DirectionBoth
+	}
+
+	result, err := h.queryEngine.GetDependencies(r.Context(), tc.TenantID, resourceID, dir, depth)
 	if err != nil {
 		http.Error(w, `{"error": "graph query failed"}`, http.StatusInternalServerError)
 		return
 	}
 
-	resp := map[string]interface{}{
-		"root_resource_id": resourceID,
-		"depth":            depth,
-		"nodes":            entities,
-		"edges":            rels,
-		"node_count":       len(entities),
-		"edge_count":       len(rels),
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(result)
+}
+
+// GetGraphStats returns topological infrastructure summary metrics for the tenant.
+func (h *ResourceHandler) GetGraphStats(w http.ResponseWriter, r *http.Request) {
+	if h.pool == nil {
+		http.Error(w, `{"error": "database connection is required"}`, http.StatusServiceUnavailable)
+		return
+	}
+
+	tc, err := domain.TenantFromContext(r.Context())
+	if err != nil {
+		http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	stats, err := h.queryEngine.GetGraphStats(r.Context(), tc.TenantID)
+	if err != nil {
+		http.Error(w, `{"error": "failed to query graph stats"}`, http.StatusInternalServerError)
+		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(stats)
 }
 
 func parseInt(s string, defaultVal int) int {

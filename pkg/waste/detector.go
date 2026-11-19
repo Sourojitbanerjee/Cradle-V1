@@ -92,13 +92,15 @@ func (d *Detector) checkUnattachedVolume(e domain.ResourceEntity, dc DetectionCo
 		volType = vt
 	}
 
-	// Cost formula: gp3 ~$0.08/GB-month, gp2 ~$0.10/GB-month, io2 ~$0.125/GB-month
-	pricePerGiB := 0.08
+	var pricePerGiB float64
 	switch volType {
 	case "gp2":
 		pricePerGiB = 0.10
 	case "io1", "io2":
 		pricePerGiB = 0.125
+	default:
+		// Baseline cost formula: gp3 ~$0.08/GB-month
+		pricePerGiB = 0.08
 	}
 	estimatedSavings := sizeGiB * pricePerGiB
 

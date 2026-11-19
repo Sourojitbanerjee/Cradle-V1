@@ -50,15 +50,12 @@ func DiscoverEC2(ctx context.Context, client *ec2.Client, account *domain.CloudA
 					"instance_id":       instID,
 					"instance_type":     string(inst.InstanceType),
 					"state":             string(inst.State.Name),
-					"vpc_id":            aws.ToString(inst.VpcId),
 					"subnet_id":         aws.ToString(inst.SubnetId),
+					"vpc_id":            aws.ToString(inst.VpcId),
 					"private_ip":        aws.ToString(inst.PrivateIpAddress),
 					"public_ip":         aws.ToString(inst.PublicIpAddress),
-					"architecture":      string(inst.Architecture),
-					"hypervisor":        string(inst.Hypervisor),
-					"virtualization":    string(inst.VirtualizationType),
+					"iam_instance_prof": inst.IamInstanceProfile,
 					"security_groups":   inst.SecurityGroups,
-					"block_device_maps": inst.BlockDeviceMappings,
 				}
 
 				entity := domain.ResourceEntity{
@@ -84,21 +81,69 @@ func DiscoverEC2(ctx context.Context, client *ec2.Client, account *domain.CloudA
 				_ = entity.ComputeConfigurationHash()
 				entities = append(entities, entity)
 
-				// Synthesize relationships
-				if inst.SubnetId != nil {
+				// Synthesize EC2 -> Subnet
+				if inst.SubnetId != nil && *inst.SubnetId != "" {
 					subnetARN := fmt.Sprintf("arn:aws:ec2:%s:%s:subnet/%s", region, account.AccountID, *inst.SubnetId)
 					relationships = append(relationships, domain.ResourceRelationship{
 						ID:               uuid.New(),
 						TenantID:         account.TenantID,
 						SourceResourceID: entity.ID,
+						TargetARN:        subnetARN,
+						TargetNativeID:   *inst.SubnetId,
 						RelationshipType: domain.RelAttachedTo,
 						Properties: map[string]interface{}{
 							"target_arn": subnetARN,
 							"subnet_id":  *inst.SubnetId,
 						},
+						Confidence:   1.0,
+						Provenance:   domain.ProvenanceObserved,
 						DiscoveredAt: now,
 						UpdatedAt:    now,
 					})
+				}
+
+				// Synthesize EC2 -> VPC
+				if inst.VpcId != nil && *inst.VpcId != "" {
+					vpcARN := fmt.Sprintf("arn:aws:ec2:%s:%s:vpc/%s", region, account.AccountID, *inst.VpcId)
+					relationships = append(relationships, domain.ResourceRelationship{
+						ID:               uuid.New(),
+						TenantID:         account.TenantID,
+						SourceResourceID: entity.ID,
+						TargetARN:        vpcARN,
+						TargetNativeID:   *inst.VpcId,
+						RelationshipType: domain.RelAttachedTo,
+						Properties: map[string]interface{}{
+							"target_arn": vpcARN,
+							"vpc_id":     *inst.VpcId,
+						},
+						Confidence:   1.0,
+						Provenance:   domain.ProvenanceObserved,
+						DiscoveredAt: now,
+						UpdatedAt:    now,
+					})
+				}
+
+				// Synthesize EC2 -> Security Groups
+				for _, sg := range inst.SecurityGroups {
+					if sg.GroupId != nil && *sg.GroupId != "" {
+						sgARN := fmt.Sprintf("arn:aws:ec2:%s:%s:security-group/%s", region, account.AccountID, *sg.GroupId)
+						relationships = append(relationships, domain.ResourceRelationship{
+							ID:               uuid.New(),
+							TenantID:         account.TenantID,
+							SourceResourceID: entity.ID,
+							TargetARN:        sgARN,
+							TargetNativeID:   *sg.GroupId,
+							RelationshipType: domain.RelAttachedTo,
+							Properties: map[string]interface{}{
+								"group_id":   *sg.GroupId,
+								"group_name": aws.ToString(sg.GroupName),
+							},
+							Confidence:   1.0,
+							Provenance:   domain.ProvenanceObserved,
+							DiscoveredAt: now,
+							UpdatedAt:    now,
+						})
+					}
 				}
 			}
 		}
@@ -169,6 +214,30 @@ func DiscoverEC2(ctx context.Context, client *ec2.Client, account *domain.CloudA
 			}
 			_ = entity.ComputeConfigurationHash()
 			entities = append(entities, entity)
+
+			// Relate EBS Volume -> EC2 Instance
+			for _, att := range vol.Attachments {
+				if att.InstanceId != nil && *att.InstanceId != "" {
+					instARN := fmt.Sprintf("arn:aws:ec2:%s:%s:instance/%s", region, account.AccountID, *att.InstanceId)
+					relationships = append(relationships, domain.ResourceRelationship{
+						ID:               uuid.New(),
+						TenantID:         account.TenantID,
+						SourceResourceID: entity.ID,
+						TargetARN:        instARN,
+						TargetNativeID:   *att.InstanceId,
+						RelationshipType: domain.RelAttachedTo,
+						Properties: map[string]interface{}{
+							"device":      aws.ToString(att.Device),
+							"instance_id": *att.InstanceId,
+							"state":       string(att.State),
+						},
+						Confidence:   1.0,
+						Provenance:   domain.ProvenanceObserved,
+						DiscoveredAt: now,
+						UpdatedAt:    now,
+					})
+				}
+			}
 		}
 	}
 
@@ -233,6 +302,26 @@ func DiscoverEC2(ctx context.Context, client *ec2.Client, account *domain.CloudA
 			}
 			_ = entity.ComputeConfigurationHash()
 			entities = append(entities, entity)
+
+			// Relate EBS Snapshot -> EBS Volume
+			if snap.VolumeId != nil && *snap.VolumeId != "" {
+				volARN := fmt.Sprintf("arn:aws:ec2:%s:%s:volume/%s", region, account.AccountID, *snap.VolumeId)
+				relationships = append(relationships, domain.ResourceRelationship{
+					ID:               uuid.New(),
+					TenantID:         account.TenantID,
+					SourceResourceID: entity.ID,
+					TargetARN:        volARN,
+					TargetNativeID:   *snap.VolumeId,
+					RelationshipType: domain.RelDependsOn,
+					Properties: map[string]interface{}{
+						"volume_id": *snap.VolumeId,
+					},
+					Confidence:   1.0,
+					Provenance:   domain.ProvenanceObserved,
+					DiscoveredAt: now,
+					UpdatedAt:    now,
+				})
+			}
 		}
 	}
 
@@ -284,6 +373,27 @@ func DiscoverEC2(ctx context.Context, client *ec2.Client, account *domain.CloudA
 			}
 			_ = entity.ComputeConfigurationHash()
 			entities = append(entities, entity)
+
+			// Relate Elastic IP -> EC2 Instance
+			if addr.InstanceId != nil && *addr.InstanceId != "" {
+				instARN := fmt.Sprintf("arn:aws:ec2:%s:%s:instance/%s", region, account.AccountID, *addr.InstanceId)
+				relationships = append(relationships, domain.ResourceRelationship{
+					ID:               uuid.New(),
+					TenantID:         account.TenantID,
+					SourceResourceID: entity.ID,
+					TargetARN:        instARN,
+					TargetNativeID:   *addr.InstanceId,
+					RelationshipType: domain.RelAttachedTo,
+					Properties: map[string]interface{}{
+						"instance_id": *addr.InstanceId,
+						"public_ip":   aws.ToString(addr.PublicIp),
+					},
+					Confidence:   1.0,
+					Provenance:   domain.ProvenanceObserved,
+					DiscoveredAt: now,
+					UpdatedAt:    now,
+				})
+			}
 		}
 	}
 

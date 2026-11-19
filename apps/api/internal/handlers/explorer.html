@@ -1,0 +1,1275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cradle &mdash; Infrastructure Dependency Explorer</title>
+    <style>
+        :root {
+            --bg-base: #0b0f19;
+            --bg-surface: #111827;
+            --bg-elevated: #1f2937;
+            --border-dim: #1f2937;
+            --border-bright: #374151;
+            --text-main: #f9fafb;
+            --text-muted: #9ca3af;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --accent-amber: #f59e0b;
+            --accent-green: #10b981;
+            --accent-purple: #8b5cf6;
+            --accent-pink: #ec4899;
+            --accent-cyan: #06b6d4;
+            --accent-red: #ef4444;
+            --badge-observed: #10b981;
+            --badge-tag: #8b5cf6;
+            --badge-derived: #3b82f6;
+            --badge-inferred: #f59e0b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+            background: var(--bg-base);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header Bar */
+        header {
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-dim);
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            z-index: 100;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+        .brand-logo {
+            width: 28px;
+            height: 28px;
+            background: linear-gradient(135deg, var(--primary), var(--accent-purple));
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 16px;
+            color: #fff;
+        }
+        .brand-title {
+            font-weight: 700;
+            font-size: 16px;
+            letter-spacing: -0.02em;
+        }
+        .brand-subtitle {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-left: 4px;
+        }
+
+        /* Controls Bar */
+        .controls-strip {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .input-group {
+            display: flex;
+            align-items: center;
+            background: var(--bg-base);
+            border: 1px solid var(--border-bright);
+            border-radius: 6px;
+            padding: 4px 8px;
+            gap: 6px;
+        }
+        .input-group label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+        .input-group input, .input-group select {
+            background: transparent;
+            border: none;
+            color: var(--text-main);
+            font-size: 13px;
+            outline: none;
+        }
+        .search-box {
+            position: relative;
+            width: 280px;
+        }
+        .search-box input {
+            width: 100%;
+            padding-right: 20px;
+        }
+        .search-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-bright);
+            border-radius: 6px;
+            margin-top: 4px;
+            max-height: 260px;
+            overflow-y: auto;
+            z-index: 200;
+            display: none;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+        }
+        .search-dropdown-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-dim);
+            font-size: 12px;
+        }
+        .search-dropdown-item:hover {
+            background: var(--primary);
+            color: #fff;
+        }
+        .search-dropdown-item .item-title {
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+        }
+        .search-dropdown-item .item-sub {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-family: monospace;
+        }
+        .search-dropdown-item:hover .item-sub {
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .btn-group {
+            display: flex;
+            background: var(--bg-base);
+            border: 1px solid var(--border-bright);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .btn-group button {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .btn-group button:hover {
+            color: var(--text-main);
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .btn-group button.active {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .action-btn {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-bright);
+            color: var(--text-main);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+        .action-btn:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Main Workspace Layout */
+        .workspace {
+            display: flex;
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Canvas Area */
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            background: radial-gradient(circle at center, #111827 0%, #0b0f19 100%);
+            overflow: hidden;
+            cursor: grab;
+        }
+        #canvas-container:active { cursor: grabbing; }
+
+        svg#graph-svg {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        /* Topology Stats Overlay Bar */
+        .topology-stats-bar {
+            position: absolute;
+            bottom: 16px;
+            left: 20px;
+            background: rgba(17, 24, 39, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            padding: 8px 16px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            pointer-events: auto;
+            z-index: 50;
+        }
+        .stat-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .stat-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        /* Inspector Drawer */
+        #inspector-drawer {
+            width: 440px;
+            background: var(--bg-surface);
+            border-left: 1px solid var(--border-dim);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            z-index: 90;
+            transition: transform 0.25s ease;
+        }
+        #inspector-drawer.collapsed {
+            transform: translateX(100%);
+            display: none;
+        }
+        .drawer-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-dim);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: sticky;
+            top: 0;
+            background: var(--bg-surface);
+            z-index: 10;
+        }
+        .drawer-title-wrap {
+            flex: 1;
+            margin-right: 12px;
+        }
+        .drawer-res-name {
+            font-size: 16px;
+            font-weight: 700;
+            word-break: break-all;
+            margin-bottom: 4px;
+        }
+        .drawer-res-type {
+            font-size: 12px;
+            color: var(--accent-cyan);
+            font-family: monospace;
+        }
+        .close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 20px;
+            cursor: pointer;
+            padding: 0 4px;
+        }
+        .close-btn:hover { color: var(--text-main); }
+
+        .drawer-body {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .section-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-dim);
+            border-radius: 8px;
+            padding: 14px;
+        }
+        .section-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .kv-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .kv-key { color: var(--text-muted); }
+        .kv-val {
+            font-family: monospace;
+            color: var(--text-main);
+            text-align: right;
+            max-width: 260px;
+            word-break: break-all;
+        }
+
+        /* Provenance Badges */
+        .badge-pill {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .badge-observed {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--badge-observed);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+        .badge-tag {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--badge-tag);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+        }
+        .badge-derived {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--badge-derived);
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        .badge-inferred {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--badge-inferred);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        /* Dependency Tables in Drawer */
+        .dep-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .dep-item {
+            background: var(--bg-base);
+            border: 1px solid var(--border-bright);
+            border-radius: 6px;
+            padding: 10px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .dep-item:hover {
+            border-color: var(--primary);
+            background: rgba(59, 130, 246, 0.05);
+        }
+        .dep-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .dep-type {
+            font-weight: 700;
+            font-size: 11px;
+            color: var(--accent-amber);
+            font-family: monospace;
+        }
+        .dep-name {
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 2px;
+        }
+        .dep-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-family: monospace;
+        }
+
+        /* SVG Graph Styling */
+        .edge-line {
+            stroke-width: 2px;
+            stroke-linecap: round;
+            transition: stroke-width 0.2s;
+        }
+        .edge-label {
+            font-family: -apple-system, monospace;
+            font-size: 9px;
+            font-weight: 600;
+            fill: #9ca3af;
+            text-anchor: middle;
+            pointer-events: none;
+            user-select: none;
+        }
+        .node-group {
+            cursor: pointer;
+            transition: transform 0.1s ease;
+        }
+        .node-group:hover circle {
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.8));
+        }
+        .node-circle {
+            stroke-width: 2.5px;
+            transition: all 0.2s ease;
+        }
+        .node-circle.root {
+            stroke: #fff !important;
+            stroke-width: 4px;
+            filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.8));
+        }
+        .node-label {
+            font-size: 11px;
+            font-weight: 600;
+            fill: var(--text-main);
+            text-anchor: middle;
+            pointer-events: none;
+            user-select: none;
+        }
+        .node-type-label {
+            font-size: 9px;
+            font-family: monospace;
+            fill: var(--text-muted);
+            text-anchor: middle;
+            pointer-events: none;
+            user-select: none;
+        }
+
+        /* Empty & Loading States */
+        .empty-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            max-width: 400px;
+            padding: 30px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-bright);
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            display: none;
+        }
+        .empty-overlay h3 { font-size: 18px; margin-bottom: 8px; }
+        .empty-overlay p { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5; }
+
+        pre.json-view {
+            background: #000;
+            padding: 8px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+            color: #10b981;
+            overflow-x: auto;
+            max-height: 160px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Header & Global Search Bar -->
+    <header>
+        <a href="/" class="brand">
+            <div class="brand-logo">C</div>
+            <div>
+                <span class="brand-title">Cradle Graph</span>
+                <span class="brand-subtitle">Dependency Explorer</span>
+            </div>
+        </a>
+
+        <div class="controls-strip">
+            <div class="input-group">
+                <label>Tenant</label>
+                <input type="text" id="tenant-input" value="a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" style="width: 130px;" title="Active Tenant ID">
+            </div>
+
+            <!-- Resource Search Autocomplete -->
+            <div class="input-group search-box">
+                <label>&telrec;</label>
+                <input type="text" id="resource-search" placeholder="Search resource name, ID, type..." autocomplete="off">
+                <div class="search-dropdown" id="search-dropdown"></div>
+            </div>
+
+            <!-- Direction Toggle -->
+            <div class="btn-group" id="direction-toggle" title="Graph Traversal Direction">
+                <button class="active" data-dir="both">&harr; Both</button>
+                <button data-dir="upstream">&uarr; Upstream</button>
+                <button data-dir="downstream">&darr; Downstream</button>
+            </div>
+
+            <!-- Traversal Depth -->
+            <div class="input-group">
+                <label>Depth</label>
+                <select id="depth-select">
+                    <option value="1">1 Hop</option>
+                    <option value="2">2 Hops</option>
+                    <option value="3" selected>3 Hops</option>
+                    <option value="4">4 Hops</option>
+                    <option value="5">5 Hops</option>
+                </select>
+            </div>
+
+            <button class="action-btn" id="btn-fit" title="Reset Camera / Fit View">
+                <span>&target;</span> Fit
+            </button>
+            <button class="action-btn" id="btn-stats" title="View Graph Statistics">
+                <span>&chart;</span> Hubs
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Visual Canvas & Inspector -->
+    <div class="workspace">
+        <div id="canvas-container">
+            <svg id="graph-svg">
+                <defs>
+                    <marker id="arrow-attached" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#3b82f6" />
+                    </marker>
+                    <marker id="arrow-routes" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b5cf6" />
+                    </marker>
+                    <marker id="arrow-targets" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#06b6d4" />
+                    </marker>
+                    <marker id="arrow-manages" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#a855f7" />
+                    </marker>
+                    <marker id="arrow-contains" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#ec4899" />
+                    </marker>
+                    <marker id="arrow-encrypts" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#eab308" />
+                    </marker>
+                    <marker id="arrow-generic" viewBox="0 0 10 10" refX="28" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" />
+                    </marker>
+                </defs>
+                <g id="transform-group">
+                    <g id="edges-layer"></g>
+                    <g id="nodes-layer"></g>
+                </g>
+            </svg>
+
+            <!-- Bottom Floating Stats Bar -->
+            <div class="topology-stats-bar">
+                <div class="stat-badge">
+                    <div class="stat-dot" style="background: var(--primary);"></div>
+                    <span>Root: <strong id="stat-root-name">None</strong></span>
+                </div>
+                <div class="stat-badge">
+                    <div class="stat-dot" style="background: var(--accent-green);"></div>
+                    <span>Nodes: <strong id="stat-nodes-count">0</strong></span>
+                </div>
+                <div class="stat-badge">
+                    <div class="stat-dot" style="background: var(--accent-purple);"></div>
+                    <span>Edges: <strong id="stat-edges-count">0</strong></span>
+                </div>
+                <div class="stat-badge">
+                    <div class="stat-dot" style="background: var(--accent-cyan);"></div>
+                    <span>Upstream: <strong id="stat-upstream-count">0</strong></span>
+                </div>
+                <div class="stat-badge">
+                    <div class="stat-dot" style="background: var(--accent-amber);"></div>
+                    <span>Downstream: <strong id="stat-downstream-count">0</strong></span>
+                </div>
+            </div>
+
+            <!-- Empty / Welcome Overlay -->
+            <div class="empty-overlay" id="empty-overlay">
+                <h3>Select a Resource</h3>
+                <p>Use the search bar above to select an infrastructure resource or pick from discovered cloud hubs to visualize its dependencies.</p>
+                <button class="action-btn" id="btn-load-sample" style="margin: 0 auto;">Load First Available Resource</button>
+            </div>
+        </div>
+
+        <!-- Detail Inspector Drawer -->
+        <div id="inspector-drawer" class="collapsed">
+            <div class="drawer-header">
+                <div class="drawer-title-wrap">
+                    <div class="drawer-res-name" id="drawer-res-name">-</div>
+                    <div class="drawer-res-type" id="drawer-res-type">-</div>
+                </div>
+                <button class="close-btn" id="btn-close-drawer">&times;</button>
+            </div>
+
+            <div class="drawer-body">
+                <!-- Actions -->
+                <button class="action-btn" id="btn-focus-root" style="justify-content: center;">
+                    &target; Focus as Graph Root
+                </button>
+
+                <!-- Core Metadata -->
+                <div class="section-card">
+                    <div class="section-title">Resource Identity</div>
+                    <div class="kv-row"><span class="kv-key">Resource ID</span><span class="kv-val" id="det-id">-</span></div>
+                    <div class="kv-row"><span class="kv-key">Native ID</span><span class="kv-val" id="det-native-id">-</span></div>
+                    <div class="kv-row"><span class="kv-key">ARN</span><span class="kv-val" id="det-arn">-</span></div>
+                    <div class="kv-row"><span class="kv-key">Region</span><span class="kv-val" id="det-region">-</span></div>
+                    <div class="kv-row"><span class="kv-key">Status</span><span class="kv-val" id="det-status">-</span></div>
+                    <div class="kv-row"><span class="kv-key">Discovered At</span><span class="kv-val" id="det-discovered">-</span></div>
+                </div>
+
+                <!-- Provenance Summary -->
+                <div class="section-card">
+                    <div class="section-title">Epistemological Provenance</div>
+                    <p style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
+                        Cradle strictly maintains facts vs. inferences separation:
+                    </p>
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap;" id="provenance-badges-container">
+                        <span class="badge-pill badge-observed">OBSERVED FACTS</span>
+                    </div>
+                </div>
+
+                <!-- Upstream Dependencies -->
+                <div class="section-card">
+                    <div class="section-title">
+                        <span>&uarr; Upstream Dependencies (Dependents)</span>
+                        <span class="badge-pill badge-observed" id="det-upstream-badge">0</span>
+                    </div>
+                    <div class="dep-list" id="upstream-dep-list">
+                        <div style="font-size: 12px; color: var(--text-muted);">None discovered</div>
+                    </div>
+                </div>
+
+                <!-- Downstream Dependencies -->
+                <div class="section-card">
+                    <div class="section-title">
+                        <span>&darr; Downstream Dependencies (Prerequisites)</span>
+                        <span class="badge-pill badge-derived" id="det-downstream-badge">0</span>
+                    </div>
+                    <div class="dep-list" id="downstream-dep-list">
+                        <div style="font-size: 12px; color: var(--text-muted);">None discovered</div>
+                    </div>
+                </div>
+
+                <!-- Tags -->
+                <div class="section-card">
+                    <div class="section-title">Provider Tags</div>
+                    <div id="det-tags-container" style="font-size: 12px; color: var(--text-muted);">No tags</div>
+                </div>
+
+                <!-- Observed State JSON Preview -->
+                <div class="section-card">
+                    <div class="section-title">Observed State</div>
+                    <pre class="json-view" id="det-observed-json">{}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Client Script: Graph Physics, Pan/Zoom, Traversal Engine -->
+    <script>
+        const state = {
+            tenantID: document.getElementById('tenant-input').value,
+            rootResourceID: null,
+            rootResource: null,
+            direction: 'both',
+            depth: 3,
+            nodes: [],
+            edges: [],
+            upstreamNodes: [],
+            downstreamNodes: [],
+            selectedNode: null,
+            zoom: 1,
+            panX: 0,
+            panY: 0,
+            isDragging: false,
+            dragStartX: 0,
+            dragStartY: 0,
+            simulationRunning: true
+        };
+
+        // Service Color Mapping
+        const TYPE_COLORS = {
+            'aws:ec2:instance': '#f59e0b',
+            'aws:ec2:vpc': '#3b82f6',
+            'aws:ec2:subnet': '#60a5fa',
+            'aws:ec2:route-table': '#8b5cf6',
+            'aws:ec2:nat-gateway': '#ec4899',
+            'aws:ec2:security-group': '#ef4444',
+            'aws:rds:db-instance': '#10b981',
+            'aws:rds:db-cluster': '#059669',
+            'aws:elbv2:load-balancer': '#6366f1',
+            'aws:elbv2:target-group': '#06b6d4',
+            'aws:eks:cluster': '#8b5cf6',
+            'aws:eks:nodegroup': '#a855f7',
+            'aws:kms:key': '#eab308',
+            'aws:s3:bucket': '#14b8a6',
+            'aws:ec2:volume': '#64748b',
+            'aws:ec2:snapshot': '#475569',
+            'aws:ec2:eip': '#0284c7'
+        };
+
+        const EDGE_COLORS = {
+            'ATTACHED_TO': '#3b82f6',
+            'ROUTES_TO': '#8b5cf6',
+            'TARGETS': '#06b6d4',
+            'MANAGES': '#a855f7',
+            'CONTAINS': '#ec4899',
+            'ENCRYPTS_WITH': '#eab308',
+            'DEPENDS_ON': '#64748b'
+        };
+
+        const svg = document.getElementById('graph-svg');
+        const transformGroup = document.getElementById('transform-group');
+        const edgesLayer = document.getElementById('edges-layer');
+        const nodesLayer = document.getElementById('nodes-layer');
+        const emptyOverlay = document.getElementById('empty-overlay');
+        const inspectorDrawer = document.getElementById('inspector-drawer');
+
+        // Helpers
+        function getTenant() {
+            return document.getElementById('tenant-input').value.trim();
+        }
+
+        async function fetchAPI(url) {
+            const resp = await fetch(url, {
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Tenant-ID': getTenant()
+                }
+            });
+            if (!resp.ok) {
+                throw new Error('API request failed: ' + resp.status);
+            }
+            return await resp.json();
+        }
+
+        // Live Search Autocomplete
+        const searchInput = document.getElementById('resource-search');
+        const searchDropdown = document.getElementById('search-dropdown');
+        let searchTimeout = null;
+
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            const query = searchInput.value.trim();
+            if (query.length < 2) {
+                searchDropdown.style.display = 'none';
+                return;
+            }
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const data = await fetchAPI('/api/v1/resources?search=' + encodeURIComponent(query) + '&limit=10');
+                    if (data && data.resources && data.resources.length > 0) {
+                        searchDropdown.innerHTML = data.resources.map(r => `
+                            <div class="search-dropdown-item" data-id="${r.id}">
+                                <div class="item-title">
+                                    <span>${escapeHTML(r.name || r.native_id)}</span>
+                                    <span style="color: ${TYPE_COLORS[r.resource_type] || '#fff'};">${escapeHTML(r.resource_type.split(':').pop())}</span>
+                                </div>
+                                <div class="item-sub">${escapeHTML(r.native_id)} &bull; ${escapeHTML(r.region)}</div>
+                            </div>
+                        `).join('');
+                        searchDropdown.style.display = 'block';
+                    } else {
+                        searchDropdown.innerHTML = '<div style="padding: 10px; color: var(--text-muted); font-size: 12px;">No resources found</div>';
+                        searchDropdown.style.display = 'block';
+                    }
+                } catch (e) {
+                    console.error('Search failed', e);
+                }
+            }, 250);
+        });
+
+        searchDropdown.addEventListener('click', (e) => {
+            const item = e.target.closest('.search-dropdown-item');
+            if (item) {
+                const id = item.getAttribute('data-id');
+                searchDropdown.style.display = 'none';
+                searchInput.value = '';
+                loadResourceGraph(id);
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!searchInput.contains(e.target) && !searchDropdown.contains(e.target)) {
+                searchDropdown.style.display = 'none';
+            }
+        });
+
+        // Direction Toggle Buttons
+        const dirToggle = document.getElementById('direction-toggle');
+        dirToggle.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                dirToggle.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                state.direction = e.target.getAttribute('data-dir');
+                if (state.rootResourceID) {
+                    loadResourceGraph(state.rootResourceID);
+                }
+            }
+        });
+
+        // Depth Selector
+        const depthSelect = document.getElementById('depth-select');
+        depthSelect.addEventListener('change', () => {
+            state.depth = parseInt(depthSelect.value, 10);
+            if (state.rootResourceID) {
+                loadResourceGraph(state.rootResourceID);
+            }
+        });
+
+        // Sample / First Resource Loader
+        document.getElementById('btn-load-sample').addEventListener('click', async () => {
+            try {
+                const data = await fetchAPI('/api/v1/resources?limit=1');
+                if (data && data.resources && data.resources.length > 0) {
+                    loadResourceGraph(data.resources[0].id);
+                } else {
+                    alert('No resources found in database for tenant ' + getTenant() + '. Run a cloud discovery sync first!');
+                }
+            } catch (err) {
+                alert('Failed loading sample: ' + err.message);
+            }
+        });
+
+        // Hubs button
+        document.getElementById('btn-stats').addEventListener('click', async () => {
+            try {
+                const stats = await fetchAPI('/api/v1/graph/stats');
+                if (stats && stats.top_hubs && stats.top_hubs.length > 0) {
+                    searchDropdown.innerHTML = '<div style="padding: 8px 12px; font-weight:700; font-size:11px; text-transform:uppercase; color:var(--text-muted); border-bottom:1px solid var(--border-dim);">Top Infrastructure Hubs</div>' +
+                        stats.top_hubs.map(h => `
+                            <div class="search-dropdown-item" data-id="${h.resource_id}">
+                                <div class="item-title">
+                                    <span>${escapeHTML(h.name)}</span>
+                                    <span style="color: var(--accent-cyan);">${h.edge_count} edges</span>
+                                </div>
+                                <div class="item-sub">${escapeHTML(h.resource_type)}</div>
+                            </div>
+                        `).join('');
+                    searchDropdown.style.display = 'block';
+                } else {
+                    alert('No graph hubs found. Total edges: ' + (stats.total_edges || 0));
+                }
+            } catch (e) {
+                alert('Failed retrieving stats: ' + e.message);
+            }
+        });
+
+        // Main Graph Loader
+        async function loadResourceGraph(resourceID) {
+            emptyOverlay.style.display = 'none';
+            state.rootResourceID = resourceID;
+
+            try {
+                const url = '/api/v1/resources/' + resourceID + '/graph?direction=' + state.direction + '&depth=' + state.depth;
+                const result = await fetchAPI(url);
+
+                state.nodes = result.nodes || [];
+                state.edges = result.edges || [];
+                state.upstreamNodes = result.upstream_nodes || [];
+                state.downstreamNodes = result.downstream_nodes || [];
+
+                // Find root resource
+                state.rootResource = state.nodes.find(n => n.id === resourceID) || null;
+
+                // Update status bar
+                document.getElementById('stat-root-name').innerText = state.rootResource ? (state.rootResource.name || state.rootResource.native_id) : resourceID;
+                document.getElementById('stat-nodes-count').innerText = state.nodes.length;
+                document.getElementById('stat-edges-count').innerText = state.edges.length;
+                document.getElementById('stat-upstream-count').innerText = result.upstream_count || 0;
+                document.getElementById('stat-downstream-count').innerText = result.downstream_count || 0;
+
+                // Render Graph with Physics Simulation
+                initGraphLayout();
+
+                // Select root node in drawer
+                if (state.rootResource) {
+                    selectNode(state.rootResource);
+                }
+            } catch (err) {
+                console.error('Failed loading dependency graph', err);
+                emptyOverlay.style.display = 'block';
+            }
+        }
+
+        // Force-Directed Layout & SVG Rendering
+        let simulationNodes = [];
+        let simulationEdges = [];
+        let animFrameId = null;
+
+        function initGraphLayout() {
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+
+            const width = svg.clientWidth || 1000;
+            const height = svg.clientHeight || 700;
+
+            const nodeMap = new Map();
+            simulationNodes = state.nodes.map((n, i) => {
+                const isRoot = n.id === state.rootResourceID;
+                const angle = (i / Math.max(1, state.nodes.length - 1)) * 2 * Math.PI;
+                const radius = isRoot ? 0 : 180 + Math.random() * 80;
+
+                const simNode = {
+                    ...n,
+                    x: width / 2 + (isRoot ? 0 : Math.cos(angle) * radius),
+                    y: height / 2 + (isRoot ? 0 : Math.sin(angle) * radius),
+                    vx: 0,
+                    vy: 0,
+                    radius: isRoot ? 32 : 24,
+                    isRoot: isRoot
+                };
+                nodeMap.set(n.id, simNode);
+                return simNode;
+            });
+
+            simulationEdges = state.edges.map(e => ({
+                ...e,
+                sourceNode: nodeMap.get(e.source_resource_id),
+                targetNode: nodeMap.get(e.target_resource_id)
+            })).filter(e => e.sourceNode && e.targetNode);
+
+            renderSVG();
+            startPhysics();
+        }
+
+        function renderSVG() {
+            // Edges Layer
+            edgesLayer.innerHTML = simulationEdges.map((e, idx) => {
+                const color = EDGE_COLORS[e.relationship_type] || '#64748b';
+                const marker = getMarkerForType(e.relationship_type);
+                const confPercent = Math.round((e.confidence || 1.0) * 100);
+                const provBadge = (e.provenance || 'OBSERVED').replace('OBSERVED_FROM_', '');
+
+                return `
+                    <g class="edge-group" data-idx="${idx}">
+                        <line id="edge-line-${idx}" class="edge-line" stroke="${color}" stroke-opacity="0.85" marker-end="${marker}"></line>
+                        <text id="edge-label-${idx}" class="edge-label">
+                            ${e.relationship_type} (${confPercent}% ${provBadge})
+                        </text>
+                    </g>
+                `;
+            }).join('');
+
+            // Nodes Layer
+            nodesLayer.innerHTML = simulationNodes.map(n => {
+                const color = TYPE_COLORS[n.resource_type] || '#9ca3af';
+                const strokeColor = n.isRoot ? '#ffffff' : color;
+                const shortType = n.resource_type.split(':').pop();
+                const displayName = truncate(n.name || n.native_id, 16);
+
+                return `
+                    <g class="node-group" id="node-${n.id}" transform="translate(${n.x}, ${n.y})" data-id="${n.id}">
+                        <circle class="node-circle ${n.isRoot ? 'root' : ''}" r="${n.radius}" fill="#111827" stroke="${strokeColor}"></circle>
+                        <text y="4" class="node-label" fill="${n.isRoot ? '#ffffff' : '#f3f4f6'}">${escapeHTML(displayName)}</text>
+                        <text y="${n.radius + 14}" class="node-type-label">${escapeHTML(shortType)}</text>
+                    </g>
+                `;
+            }).join('');
+
+            // Node interactions
+            nodesLayer.querySelectorAll('.node-group').forEach(el => {
+                el.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = el.getAttribute('data-id');
+                    const node = simulationNodes.find(n => n.id === id);
+                    if (node) selectNode(node);
+                });
+            });
+        }
+
+        function getMarkerForType(type) {
+            switch (type) {
+                case 'ATTACHED_TO': return 'url(#arrow-attached)';
+                case 'ROUTES_TO': return 'url(#arrow-routes)';
+                case 'TARGETS': return 'url(#arrow-targets)';
+                case 'MANAGES': return 'url(#arrow-manages)';
+                case 'CONTAINS': return 'url(#arrow-contains)';
+                case 'ENCRYPTS_WITH': return 'url(#arrow-encrypts)';
+                default: return 'url(#arrow-generic)';
+            }
+        }
+
+        // Lightweight force simulation in pure vanilla JS
+        function startPhysics() {
+            let ticks = 0;
+            const maxTicks = 120;
+
+            function step() {
+                if (ticks++ > maxTicks) return;
+
+                // Center gravity
+                const cx = (svg.clientWidth || 1000) / 2;
+                const cy = (svg.clientHeight || 700) / 2;
+
+                // Repulsion between nodes
+                for (let i = 0; i < simulationNodes.length; i++) {
+                    const n1 = simulationNodes[i];
+                    for (let j = i + 1; j < simulationNodes.length; j++) {
+                        const n2 = simulationNodes[j];
+                        let dx = n2.x - n1.x;
+                        let dy = n2.y - n1.y;
+                        let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                        if (dist < 260) {
+                            const force = (260 - dist) / dist * 0.05;
+                            if (!n1.isRoot) { n1.vx -= dx * force; n1.vy -= dy * force; }
+                            if (!n2.isRoot) { n2.vx += dx * force; n2.vy += dy * force; }
+                        }
+                    }
+
+                    // Weak pull towards center
+                    if (!n1.isRoot) {
+                        n1.vx += (cx - n1.x) * 0.005;
+                        n1.vy += (cy - n1.y) * 0.005;
+                    }
+                }
+
+                // Spring attraction along edges
+                for (const e of simulationEdges) {
+                    let dx = e.targetNode.x - e.sourceNode.x;
+                    let dy = e.targetNode.y - e.sourceNode.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    let targetDist = 140;
+                    let force = (dist - targetDist) * 0.03;
+                    let fx = (dx / dist) * force;
+                    let fy = (dy / dist) * force;
+
+                    if (!e.sourceNode.isRoot) { e.sourceNode.vx += fx; e.sourceNode.vy += fy; }
+                    if (!e.targetNode.isRoot) { e.targetNode.vx -= fx; e.targetNode.vy -= fy; }
+                }
+
+                // Update positions with friction damping
+                for (const n of simulationNodes) {
+                    if (n.isRoot) {
+                        n.x = cx;
+                        n.y = cy;
+                    } else {
+                        n.vx *= 0.85;
+                        n.vy *= 0.85;
+                        n.x += n.vx;
+                        n.y += n.vy;
+                    }
+
+                    const g = document.getElementById('node-' + n.id);
+                    if (g) g.setAttribute('transform', `translate(${n.x}, ${n.y})`);
+                }
+
+                // Update Edge lines and labels
+                simulationEdges.forEach((e, idx) => {
+                    const line = document.getElementById('edge-line-' + idx);
+                    const label = document.getElementById('edge-label-' + idx);
+                    if (line) {
+                        line.setAttribute('x1', e.sourceNode.x);
+                        line.setAttribute('y1', e.sourceNode.y);
+                        line.setAttribute('x2', e.targetNode.x);
+                        line.setAttribute('y2', e.targetNode.y);
+                    }
+                    if (label) {
+                        label.setAttribute('x', (e.sourceNode.x + e.targetNode.x) / 2);
+                        label.setAttribute('y', (e.sourceNode.y + e.targetNode.y) / 2 - 4);
+                    }
+                });
+
+                animFrameId = requestAnimationFrame(step);
+            }
+
+            step();
+        }
+
+        // Pan and Zoom Controller
+        const container = document.getElementById('canvas-container');
+        container.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomDelta = e.deltaY > 0 ? 0.9 : 1.1;
+            state.zoom = Math.min(Math.max(0.2, state.zoom * zoomDelta), 3.0);
+            updateTransform();
+        });
+
+        container.addEventListener('mousedown', (e) => {
+            if (e.target.tagName === 'circle' || e.target.tagName === 'text') return;
+            state.isDragging = true;
+            state.dragStartX = e.clientX - state.panX;
+            state.dragStartY = e.clientY - state.panY;
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!state.isDragging) return;
+            state.panX = e.clientX - state.dragStartX;
+            state.panY = e.clientY - state.dragStartY;
+            updateTransform();
+        });
+
+        window.addEventListener('mouseup', () => { state.isDragging = false; });
+
+        function updateTransform() {
+            transformGroup.setAttribute('transform', `translate(${state.panX}, ${state.panY}) scale(${state.zoom})`);
+        }
+
+        document.getElementById('btn-fit').addEventListener('click', () => {
+            state.zoom = 1;
+            state.panX = 0;
+            state.panY = 0;
+            updateTransform();
+            if (state.rootResourceID) initGraphLayout();
+        });
+
+        // Inspector Drawer Management
+        function selectNode(node) {
+            state.selectedNode = node;
+            inspectorDrawer.classList.remove('collapsed');
+
+            document.getElementById('drawer-res-name').innerText = node.name || node.native_id;
+            document.getElementById('drawer-res-type').innerText = node.resource_type;
+            document.getElementById('det-id').innerText = node.id;
+            document.getElementById('det-native-id').innerText = node.native_id || '-';
+            document.getElementById('det-arn').innerText = node.arn || '-';
+            document.getElementById('det-region').innerText = node.region || '-';
+            document.getElementById('det-status').innerText = node.status || 'available';
+            document.getElementById('det-discovered').innerText = node.observed_at ? new Date(node.observed_at).toLocaleString() : '-';
+
+            // Provenance Badges
+            const badgesContainer = document.getElementById('provenance-badges-container');
+            badgesContainer.innerHTML = '<span class="badge-pill badge-observed">OBSERVED FACTS</span>';
+            if (node.derived_state && Object.keys(node.derived_state).length > 0) {
+                badgesContainer.innerHTML += ' <span class="badge-pill badge-derived">DERIVED BY CRADLE</span>';
+            }
+            if (node.inferred_state && Object.keys(node.inferred_state).length > 0) {
+                badgesContainer.innerHTML += ' <span class="badge-pill badge-inferred">INFERRED</span>';
+            }
+
+            // Upstream Dependencies (edges pointing TO this node)
+            const incomingEdges = state.edges.filter(e => e.target_resource_id === node.id);
+            document.getElementById('det-upstream-badge').innerText = incomingEdges.length;
+            const upstreamList = document.getElementById('upstream-dep-list');
+            if (incomingEdges.length > 0) {
+                upstreamList.innerHTML = incomingEdges.map(e => {
+                    const src = state.nodes.find(n => n.id === e.source_resource_id);
+                    const name = src ? (src.name || src.native_id) : e.source_resource_id;
+                    const type = src ? src.resource_type : 'unknown';
+                    const conf = Math.round((e.confidence || 1.0) * 100);
+                    return `
+                        <div class="dep-item" onclick="jumpToNode('${e.source_resource_id}')">
+                            <div class="dep-header">
+                                <span class="dep-type">&uarr; ${e.relationship_type}</span>
+                                <span class="badge-pill badge-observed">${conf}% ${e.provenance || 'OBSERVED'}</span>
+                            </div>
+                            <div class="dep-name">${escapeHTML(name)}</div>
+                            <div class="dep-sub">${escapeHTML(type)}</div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                upstreamList.innerHTML = '<div style="font-size: 12px; color: var(--text-muted);">No upstream dependents</div>';
+            }
+
+            // Downstream Dependencies (edges pointing FROM this node)
+            const outgoingEdges = state.edges.filter(e => e.source_resource_id === node.id);
+            document.getElementById('det-downstream-badge').innerText = outgoingEdges.length;
+            const downstreamList = document.getElementById('downstream-dep-list');
+            if (outgoingEdges.length > 0) {
+                downstreamList.innerHTML = outgoingEdges.map(e => {
+                    const tgt = state.nodes.find(n => n.id === e.target_resource_id);
+                    const name = tgt ? (tgt.name || tgt.native_id) : e.target_resource_id;
+                    const type = tgt ? tgt.resource_type : 'unknown';
+                    const conf = Math.round((e.confidence || 1.0) * 100);
+                    return `
+                        <div class="dep-item" onclick="jumpToNode('${e.target_resource_id}')">
+                            <div class="dep-header">
+                                <span class="dep-type">&darr; ${e.relationship_type}</span>
+                                <span class="badge-pill badge-observed">${conf}% ${e.provenance || 'OBSERVED'}</span>
+                            </div>
+                            <div class="dep-name">${escapeHTML(name)}</div>
+                            <div class="dep-sub">${escapeHTML(type)}</div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                downstreamList.innerHTML = '<div style="font-size: 12px; color: var(--text-muted);">No downstream dependencies</div>';
+            }
+
+            // Tags
+            const tagsContainer = document.getElementById('det-tags-container');
+            if (node.tags && Object.keys(node.tags).length > 0) {
+                tagsContainer.innerHTML = Object.entries(node.tags).map(([k, v]) => `
+                    <div class="kv-row">
+                        <span class="kv-key">${escapeHTML(k)}</span>
+                        <span class="kv-val">${escapeHTML(v)}</span>
+                    </div>
+                `).join('');
+            } else {
+                tagsContainer.innerHTML = '<div style="color: var(--text-muted);">No tags attached</div>';
+            }
+
+            // Observed State JSON
+            document.getElementById('det-observed-json').innerText = JSON.stringify(node.observed_state || {}, null, 2);
+        }
+
+        window.jumpToNode = function(id) {
+            const node = simulationNodes.find(n => n.id === id);
+            if (node) {
+                selectNode(node);
+            } else {
+                loadResourceGraph(id);
+            }
+        };
+
+        document.getElementById('btn-close-drawer').addEventListener('click', () => {
+            inspectorDrawer.classList.add('collapsed');
+        });
+
+        document.getElementById('btn-focus-root').addEventListener('click', () => {
+            if (state.selectedNode) {
+                loadResourceGraph(state.selectedNode.id);
+            }
+        });
+
+        function truncate(str, max) {
+            if (!str) return '';
+            return str.length > max ? str.substring(0, max - 1) + '&hellip;' : str;
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        // Auto-load on page load if query param ?id=... is present
+        window.addEventListener('DOMContentLoaded', () => {
+            const params = new URLSearchParams(window.location.search);
+            const id = params.get('id');
+            if (id) {
+                loadResourceGraph(id);
+            } else {
+                emptyOverlay.style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>

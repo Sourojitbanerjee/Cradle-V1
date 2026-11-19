@@ -11,7 +11,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// DiscoverRDS catalogs RDS database instances and Aurora clusters.
+// DiscoverRDS catalogs RDS database instances and Aurora clusters, and synthesizes
+// relationships to VPCs, Subnets, Security Groups, and KMS keys.
 func DiscoverRDS(ctx context.Context, client *rds.Client, account *domain.CloudAccount, region string) ([]domain.ResourceEntity, []domain.ResourceRelationship, error) {
 	var entities []domain.ResourceEntity
 	var relationships []domain.ResourceRelationship
@@ -96,6 +97,87 @@ func DiscoverRDS(ctx context.Context, client *rds.Client, account *domain.CloudA
 			}
 			_ = entity.ComputeConfigurationHash()
 			entities = append(entities, entity)
+
+			// Relationships: RDS -> VPC & Subnets
+			if db.DBSubnetGroup != nil {
+				if vpcID := aws.ToString(db.DBSubnetGroup.VpcId); vpcID != "" {
+					relationships = append(relationships, domain.ResourceRelationship{
+						ID:               uuid.New(),
+						TenantID:         account.TenantID,
+						SourceResourceID: entity.ID,
+						TargetNativeID:   vpcID,
+						RelationshipType: domain.RelAttachedTo,
+						Confidence:       1.0,
+						Provenance:       domain.ProvenanceObserved,
+						Properties: map[string]interface{}{
+							"target_native_id": vpcID,
+							"target_type":      "aws:ec2:vpc",
+						},
+						DiscoveredAt: now,
+						UpdatedAt:    now,
+					})
+				}
+				for _, sub := range db.DBSubnetGroup.Subnets {
+					if subID := aws.ToString(sub.SubnetIdentifier); subID != "" {
+						relationships = append(relationships, domain.ResourceRelationship{
+							ID:               uuid.New(),
+							TenantID:         account.TenantID,
+							SourceResourceID: entity.ID,
+							TargetNativeID:   subID,
+							RelationshipType: domain.RelAttachedTo,
+							Confidence:       1.0,
+							Provenance:       domain.ProvenanceObserved,
+							Properties: map[string]interface{}{
+								"target_native_id": subID,
+								"target_type":      "aws:ec2:subnet",
+							},
+							DiscoveredAt: now,
+							UpdatedAt:    now,
+						})
+					}
+				}
+			}
+
+			// Relationships: RDS -> Security Groups
+			for _, sg := range db.VpcSecurityGroups {
+				if sgID := aws.ToString(sg.VpcSecurityGroupId); sgID != "" {
+					relationships = append(relationships, domain.ResourceRelationship{
+						ID:               uuid.New(),
+						TenantID:         account.TenantID,
+						SourceResourceID: entity.ID,
+						TargetNativeID:   sgID,
+						RelationshipType: domain.RelAttachedTo,
+						Confidence:       1.0,
+						Provenance:       domain.ProvenanceObserved,
+						Properties: map[string]interface{}{
+							"target_native_id": sgID,
+							"target_type":      "aws:ec2:security-group",
+						},
+						DiscoveredAt: now,
+						UpdatedAt:    now,
+					})
+				}
+			}
+
+			// Relationship: RDS -> KMS Key
+			if kmsKey := aws.ToString(db.KmsKeyId); kmsKey != "" {
+				relationships = append(relationships, domain.ResourceRelationship{
+					ID:               uuid.New(),
+					TenantID:         account.TenantID,
+					SourceResourceID: entity.ID,
+					TargetARN:        kmsKey,
+					TargetNativeID:   kmsKey,
+					RelationshipType: domain.RelEncryptsWith,
+					Confidence:       1.0,
+					Provenance:       domain.ProvenanceObserved,
+					Properties: map[string]interface{}{
+						"target_arn":  kmsKey,
+						"target_type": "aws:kms:key",
+					},
+					DiscoveredAt: now,
+					UpdatedAt:    now,
+				})
+			}
 		}
 	}
 
@@ -158,6 +240,47 @@ func DiscoverRDS(ctx context.Context, client *rds.Client, account *domain.CloudA
 			}
 			_ = entity.ComputeConfigurationHash()
 			entities = append(entities, entity)
+
+			// Relationships: Cluster -> Security Groups
+			for _, sg := range cl.VpcSecurityGroups {
+				if sgID := aws.ToString(sg.VpcSecurityGroupId); sgID != "" {
+					relationships = append(relationships, domain.ResourceRelationship{
+						ID:               uuid.New(),
+						TenantID:         account.TenantID,
+						SourceResourceID: entity.ID,
+						TargetNativeID:   sgID,
+						RelationshipType: domain.RelAttachedTo,
+						Confidence:       1.0,
+						Provenance:       domain.ProvenanceObserved,
+						Properties: map[string]interface{}{
+							"target_native_id": sgID,
+							"target_type":      "aws:ec2:security-group",
+						},
+						DiscoveredAt: now,
+						UpdatedAt:    now,
+					})
+				}
+			}
+
+			// Relationship: Cluster -> KMS Key
+			if kmsKey := aws.ToString(cl.KmsKeyId); kmsKey != "" {
+				relationships = append(relationships, domain.ResourceRelationship{
+					ID:               uuid.New(),
+					TenantID:         account.TenantID,
+					SourceResourceID: entity.ID,
+					TargetARN:        kmsKey,
+					TargetNativeID:   kmsKey,
+					RelationshipType: domain.RelEncryptsWith,
+					Confidence:       1.0,
+					Provenance:       domain.ProvenanceObserved,
+					Properties: map[string]interface{}{
+						"target_arn":  kmsKey,
+						"target_type": "aws:kms:key",
+					},
+					DiscoveredAt: now,
+					UpdatedAt:    now,
+				})
+			}
 		}
 	}
 

@@ -12,7 +12,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// DiscoverContainers catalogs ECS clusters/services and EKS managed Kubernetes clusters/nodegroups.
+// DiscoverContainers catalogs ECS clusters/services and EKS managed Kubernetes clusters/nodegroups,
+// and synthesizes relationships to VPCs, Subnets, and managed EC2 instances.
 func DiscoverContainers(
 	ctx context.Context,
 	ecsClient *ecs.Client,
@@ -124,6 +125,47 @@ func DiscoverContainers(
 			_ = entity.ComputeConfigurationHash()
 			entities = append(entities, entity)
 
+			// Relationship: EKS Cluster -> VPC
+			if cl.ResourcesVpcConfig != nil {
+				if vpcID := aws.ToString(cl.ResourcesVpcConfig.VpcId); vpcID != "" {
+					relationships = append(relationships, domain.ResourceRelationship{
+						ID:               uuid.New(),
+						TenantID:         account.TenantID,
+						SourceResourceID: entity.ID,
+						TargetNativeID:   vpcID,
+						RelationshipType: domain.RelAttachedTo,
+						Confidence:       1.0,
+						Provenance:       domain.ProvenanceObserved,
+						Properties: map[string]interface{}{
+							"target_native_id": vpcID,
+							"target_type":      "aws:ec2:vpc",
+						},
+						DiscoveredAt: now,
+						UpdatedAt:    now,
+					})
+				}
+				// Relationship: EKS Cluster -> Subnets
+				for _, subID := range cl.ResourcesVpcConfig.SubnetIds {
+					if subID != "" {
+						relationships = append(relationships, domain.ResourceRelationship{
+							ID:               uuid.New(),
+							TenantID:         account.TenantID,
+							SourceResourceID: entity.ID,
+							TargetNativeID:   subID,
+							RelationshipType: domain.RelAttachedTo,
+							Confidence:       1.0,
+							Provenance:       domain.ProvenanceObserved,
+							Properties: map[string]interface{}{
+								"target_native_id": subID,
+								"target_type":      "aws:ec2:subnet",
+							},
+							DiscoveredAt: now,
+							UpdatedAt:    now,
+						})
+					}
+				}
+			}
+
 			// Discover Managed NodeGroups for this cluster
 			ngList, err := eksClient.ListNodegroups(ctx, &eks.ListNodegroupsInput{
 				ClusterName: aws.String(clusterName),
@@ -147,6 +189,7 @@ func DiscoverContainers(
 						"status":         string(ng.Status),
 						"instance_types": ng.InstanceTypes,
 						"scaling_config": ng.ScalingConfig,
+						"subnets":        ng.Subnets,
 					}
 
 					ngEntity := domain.ResourceEntity{
@@ -168,15 +211,55 @@ func DiscoverContainers(
 					_ = ngEntity.ComputeConfigurationHash()
 					entities = append(entities, ngEntity)
 
-					// Relationship: Cluster contains NodeGroup
+					// Relationship: Cluster CONTAINS NodeGroup
 					relationships = append(relationships, domain.ResourceRelationship{
 						ID:               uuid.New(),
 						TenantID:         account.TenantID,
 						SourceResourceID: entity.ID,
 						TargetResourceID: ngEntity.ID,
 						RelationshipType: domain.RelContains,
+						Confidence:       1.0,
+						Provenance:       domain.ProvenanceObserved,
 						DiscoveredAt:     now,
 						UpdatedAt:        now,
+					})
+
+					// Relationship: NodeGroup -> Subnets
+					for _, subID := range ng.Subnets {
+						if subID != "" {
+							relationships = append(relationships, domain.ResourceRelationship{
+								ID:               uuid.New(),
+								TenantID:         account.TenantID,
+								SourceResourceID: ngEntity.ID,
+								TargetNativeID:   subID,
+								RelationshipType: domain.RelAttachedTo,
+								Confidence:       1.0,
+								Provenance:       domain.ProvenanceObserved,
+								Properties: map[string]interface{}{
+									"target_native_id": subID,
+									"target_type":      "aws:ec2:subnet",
+								},
+								DiscoveredAt: now,
+								UpdatedAt:    now,
+							})
+						}
+					}
+
+					// Relationship: NodeGroup MANAGES EC2 Instances (Tag match)
+					relationships = append(relationships, domain.ResourceRelationship{
+						ID:               uuid.New(),
+						TenantID:         account.TenantID,
+						SourceResourceID: ngEntity.ID,
+						RelationshipType: domain.RelManages,
+						Confidence:       0.95,
+						Provenance:       domain.ProvenanceObservedTag,
+						Properties: map[string]interface{}{
+							"match_tag_key": "eks:nodegroup-name",
+							"match_tag_val": ngName,
+							"cluster_name":  clusterName,
+						},
+						DiscoveredAt: now,
+						UpdatedAt:    now,
 					})
 				}
 			}
